@@ -173,6 +173,7 @@ func cmdReplay(args []string) error {
 		// way to count.
 		case s.r.On == ask.ModeMint && len(s.r.When) == 0:
 			fmt.Printf("%-34s %s\n", s.r.Where(base), "every mint  (no rate to measure)")
+			warnBlindToDiff(s.r)
 			continue
 		case s.r.On == ask.ModeMint:
 			fmt.Printf("%-34s %5d/%-5d  %5.1f%%  [of mints, simulated]\n",
@@ -181,6 +182,7 @@ func cmdReplay(args []string) error {
 			fmt.Printf("%-34s %5d/%-5d  %5.1f%%\n",
 				s.r.Where(base), s.fired, s.eligible, rate(s.fired, s.eligible)*100)
 		}
+		warnBlindToDiff(s.r)
 		for _, ex := range s.samples {
 			fmt.Printf("    %s\n", ex)
 		}
@@ -227,6 +229,32 @@ func cmdLint(args []string) error {
 		return fmt.Errorf("%d problem(s)", bad)
 	}
 	return nil
+}
+
+// warnBlindToDiff says so when the rate above it did not measure the ask.
+//
+// Replay builds a synthetic edit from a file on disk, which has no old text, so
+// `added:` degrades to `when:` and `removed:` can never fire. The rate is then
+// about the ask's other gates and says nothing about the one the author most
+// wants checked. A silent wrong number is worse than an absent one: a real
+// `added: "aliases"` printed 70.0% here, which is the rate its `in:` and the
+// file contents produce and not a thing that will ever happen at an edit.
+//
+// The honest check is to drive `onsetter hook` with an old/new pair.
+func warnBlindToDiff(r *ask.Ask) {
+	var gates []string
+	if len(r.Added) > 0 {
+		gates = append(gates, "added:")
+	}
+	if len(r.Removed) > 0 {
+		gates = append(gates, "removed:")
+	}
+	if len(gates) == 0 {
+		return
+	}
+	fmt.Printf("    ! rate does not measure %s — replay has no old text, so\n",
+		strings.Join(gates, " or "))
+	fmt.Printf("      there is no diff to gate on. Drive `onsetter hook` to check it.\n")
 }
 
 // funnel renders where a never-firing ask lost its files, in the order Match

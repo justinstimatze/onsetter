@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- `replay` marks any row whose rate does not measure the gate the author cares
+  about. It builds synthetic edits from files on disk, so there is no old text:
+  `added:` degrades to `when:` and `removed:` never fires. A real
+  `added: "aliases"` printed 100.0% while gating on nothing replay can see, and
+  the number was silently about the ask's `in:` instead. The row now says so and
+  points at `onsetter hook`, which is the honest check.
+
+  Not building `replay --since <rev>` to fix this properly. Across every
+  deployed ask set there is exactly one using a diff header and none using
+  `removed:`, so an hour of git-history walking would serve a single gate that
+  two piped JSON payloads verify in ninety seconds. If diff-gated asks get
+  common the feature earns itself then.
+
 ## v0.3.0 — 2026-08-07
 
 Behaviour change for anyone already running v0.2.0: an ask that gates on content

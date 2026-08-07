@@ -157,9 +157,14 @@ pattern therefore does not read as adding it.
 out leaves no trace in the text being written.
 
 Two shapes to know. A Write has no old text, so `added:` sees the whole file and
-`removed:` can never fire. And `onsetter list` and `onsetter replay` construct
-synthetic edits from files on disk, so `added:` degrades to `when:` and
-`removed:` reports nothing in either of those.
+`removed:` can never fire.
+
+And `onsetter list` and `onsetter replay` construct synthetic edits from files on
+disk, so `added:` degrades to `when:` and `removed:` reports nothing in either of
+them. A rate printed for one of these gates is therefore about the ask's *other*
+gates and says nothing about the one you care about — `replay` marks any such row
+rather than leaving the number to be read as if it meant something. The honest
+check is to drive `onsetter hook` with an old/new pair.
 
 ### `when:` — the incoming text
 
