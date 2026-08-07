@@ -127,6 +127,16 @@ var reference string
 // binary rather than living at a path someone has to already know.
 func Reference() string { return reference }
 
+//go:embed skill.md
+var skill string
+
+// Skill is the Claude Code skill `onsetter install` writes to
+// ~/.claude/skills/onsetter/SKILL.md. It is deliberately thin and defers the
+// header table to Reference: two copies of the same reference would drift, and
+// the copy inside the binary is the one that cannot disagree with the parser
+// shipped beside it.
+func Skill() string { return skill }
+
 // Headers are the header keys a block may carry, in the order Match applies
 // them. One list, so the parse error, the reference in `onsetter headers` and
 // the funnel in `onsetter replay` cannot disagree about what exists.

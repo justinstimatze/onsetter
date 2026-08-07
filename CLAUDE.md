@@ -37,10 +37,11 @@ The one-emitter rule is pinned by a test instead.
 in: internal/ask/ask.go
 when: case "[a-z-]+":
 
-Adding a header means three places have to agree: this switch, the `Headers`
+Adding a header means four places have to agree: this switch, the `Headers`
 slice that fixes the order `Match` applies gates and `replay` reports a funnel
-in, and a section plus a table row in `headers.md`. Tests assert the last two,
-so a miss here fails CI rather than shipping — but the parse error a reader
-gets is much better if all three land together. If this case is not a new
-header, continue.
+in, a section plus a table row in `headers.md`, and the header list in
+`skill.md`'s frontmatter, which is the only text deciding whether the skill
+surfaces at all. Tests assert the last three, so a miss here fails CI rather
+than shipping — but the parse error a reader gets is much better if all four
+land together. If this case is not a new header, continue.
 ```

@@ -56,7 +56,8 @@ const usage = `onsetter — asks that arrive at the edit, not at session start.
 
   onsetter hook              PreToolUse dispatcher; reads the pending call on
                              stdin. This is the only thing settings.json runs.
-  onsetter install           Wire the hook into ~/.claude/settings.local.json.
+  onsetter install           Wire the hook into ~/.claude/settings.local.json
+                             and write the authoring skill. Re-running converges.
   onsetter list [path]       Asks governing a path, and whether each would
                              fire against the file as it stands.
   onsetter replay <glob>...  Fire rate of every ask against a corpus. Run this

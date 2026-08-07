@@ -95,6 +95,16 @@ onsetter install
 it leaves every other project's hooks alone. From a clone, `make wire` does
 both and stamps the version from the git tag.
 
+It also writes `~/.claude/skills/onsetter/SKILL.md`, which is how *writing* an
+ask becomes discoverable. The hook needs no such thing — it fires on the tool
+call whether or not anything knows it exists. Drafting a block is the opposite:
+there is no tool named onsetter in an agent's list, so without the skill the
+format is only findable by reading this file. The skill is indexed by its
+description and loads when an ask is being written, and it defers the header
+table to `onsetter headers` rather than copying it, so the reference an agent
+reads is always the one the installed parser implements. Nobody has to remember
+a slash command.
+
 Hook settings are read per session, so a session already running will not pick
 this up. Start a new one.
 
@@ -368,7 +378,7 @@ thing. Same 0.0% either way, and only one of them is a typo.
 
 ```
 onsetter hook              the dispatcher; the only thing settings.json runs
-onsetter install           wire ~/.claude/settings.local.json
+onsetter install           wire ~/.claude/settings.local.json, write the skill
 onsetter list [path]       what governs this path, and what would fire now
 onsetter replay <glob>...  fire rate of every ask against a corpus
 onsetter lint [dir]        parse every block; refuse the ones that say nothing

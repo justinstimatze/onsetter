@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/justinstimatze/onsetter/internal/ask"
 )
 
 // cmdInstall writes the one settings entry onsetter will ever need.
@@ -105,10 +107,45 @@ func cmdInstall(args []string) error {
 		return err
 	}
 
+	skill, err := writeSkill(filepath.Dir(settings))
+	if err != nil {
+		return err
+	}
+
 	fmt.Printf("  wired %s\n", shortOne(settings))
 	fmt.Printf("  command: %s\n", command)
+	fmt.Printf("  skill:   %s\n", shortOne(skill))
 	fmt.Printf("\n  Open /hooks once in Claude Code to reload the settings watcher.\n")
 	fmt.Printf("  Hook settings are read per session — a session already running\n")
 	fmt.Printf("  will not pick this up.\n")
 	return nil
+}
+
+// writeSkill installs the authoring guide as a Claude Code skill next to the
+// settings file being wired.
+//
+// The hook needs no advertisement — it fires on the tool call whether or not
+// anything knows it exists. Writing an ask is the opposite: there is no tool
+// named onsetter in an agent's list and no way to discover the format except
+// prose somebody left lying around. A skill is that prose, indexed by its
+// description, so it loads when an ask is being written rather than sitting in
+// the always-on file costing tokens on every unrelated turn.
+//
+// Regenerated on every install, because the guide belongs to the binary and a
+// hand-edit here would be a second source of truth for a format the parser
+// beside it defines.
+func writeSkill(claudeDir string) (string, error) {
+	dir := filepath.Join(claudeDir, "skills", "onsetter")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, "SKILL.md")
+	tmp := path + ".onsetter-tmp"
+	if err := os.WriteFile(tmp, []byte(ask.Skill()), 0o644); err != nil {
+		return "", err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return "", err
+	}
+	return path, nil
 }

@@ -429,3 +429,26 @@ func TestReferenceDocumentsEveryHeader(t *testing.T) {
 		t.Errorf("an ```ask block in headers.md does not parse: %v", err)
 	}
 }
+
+// The skill is retrieved by its description and by nothing else, so a header
+// missing from that one paragraph is a header whose questions never reach the
+// guide. Everything past the frontmatter can say what it likes; the front
+// matter is the index.
+func TestSkillFrontmatterNamesEveryHeader(t *testing.T) {
+	doc := Skill()
+	if !strings.HasPrefix(doc, "---\nname: onsetter\ndescription: ") {
+		t.Fatalf("skill.md must open with frontmatter naming the skill; got %.40q", doc)
+	}
+	end := strings.Index(doc[4:], "\n---\n")
+	if end < 0 {
+		t.Fatal("skill.md's frontmatter is never closed")
+	}
+	front := doc[:end+4]
+	// The literal list, not nine substring checks: "in" and "on" and "not" are
+	// each a substring of half the prose in that paragraph, so a loose check
+	// passes no matter what the description says.
+	list := strings.Join(Headers, ", ")
+	if !strings.Contains(front, list) {
+		t.Errorf("skill.md's description must list the headers as %q, or the skill will not surface for the ones it omits", list)
+	}
+}

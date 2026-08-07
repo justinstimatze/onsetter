@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- `install` writes `~/.claude/skills/onsetter/SKILL.md` beside the settings
+  entry it wires. The hook half of this tool needs no advertisement — it fires
+  on the tool call whether or not the agent it fires at knows the tool exists.
+  The authoring half had nothing: no tool named onsetter appears in an agent's
+  list, so the only route to the format was a line of prose in someone's
+  always-on `CLAUDE.md`, which costs tokens on every unrelated turn and is
+  still missed. A skill is that prose, indexed by its description and loaded
+  when an ask is actually being written.
+
+  It defers the header table to `onsetter headers` instead of copying it. Two
+  copies of one reference drift, and the copy inside the binary is the one that
+  cannot disagree with the parser shipped beside it. The skill carries what the
+  reference does not: where the block goes, the replay loop, the two things
+  replay cannot measure, and why a wide gate costs more since v0.3.0.
+
+  Regenerated on every install rather than merged, and a test asserts a
+  hand-edit does not survive one. Adding a header is now four places, not
+  three — the fourth is the header list in the skill's frontmatter, which is
+  the entire retrieval surface, so a header missing there is a header whose
+  questions never reach the guide. The test names the exact list.
+
 - `replay` marks any row whose rate does not measure the gate the author cares
   about. It builds synthetic edits from files on disk, so there is no old text:
   `added:` degrades to `when:` and `removed:` never fires. A real
