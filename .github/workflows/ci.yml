@@ -5,6 +5,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Checkout and the Go toolchain are all this needs; anything more is a token
+# handed to every action in the job for no reason.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
