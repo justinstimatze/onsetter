@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v0.3.0 — 2026-08-07
+
+Behaviour change for anyone already running v0.2.0: an ask that gates on content
+now asks more than once in a session. See the first entry.
+
 - The fired-set keys on the ask **and the text it quoted back**, so an ask that
   gates on content asks again when there is something new to look at. Editing
   forty files in one session used to produce one question; now a new match is a
@@ -24,6 +29,17 @@
   arbitrary text including newlines, and the store is one key per line. Sessions
   in flight across the change hold bare IDs, so reminders keep suppressing and
   content asks re-arm once.
+- `internal/session` had no tests and now has six, including one asserting that a
+  match containing newlines cannot write two lines into a one-key-per-line store.
+- The `ci` workflow pins `GITHUB_TOKEN` to `contents: read`. CodeQL's actions
+  analysis flagged it the moment code scanning was switched on: with no
+  permissions block the job takes whatever the repository default grants, which
+  is a write token handed to every action in a build that only reads.
+- Dependabot PRs auto-merge once `ci` goes green, for non-major bumps only. A
+  title the parser cannot read is left for a human.
+- Repository settings: secret scanning, push protection, Dependabot alerts,
+  private vulnerability reporting, and CodeQL default setup over `go` and
+  `actions` on the extended suite.
 
 ## v0.2.0 — 2026-08-06
 
