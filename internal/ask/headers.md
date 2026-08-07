@@ -228,6 +228,22 @@ rejected it.
 
 ## Lifetime
 
-An ask fires once per session. Its identity is a hash of its gate and its body,
-not its line number, so inserting a paragraph above it changes nothing — and
-editing its prose re-arms it. To retire one, delete the block.
+An ask asks each question once per session, and a question is the ask plus the
+text it quoted back.
+
+That means the two kinds of block get opposite treatment without either one
+declaring itself. A block with no content gate quotes nothing, so it fires once
+per session however many files it governs — it is a reminder, and repeating it
+is noise. A block with a `when:`, `has:`, `added:` or `removed:` keys on what
+it matched, so a new match asks again and a repeat of the same match stays
+quiet. Its ceiling is set by its own pattern: an ask can fire at most once per
+distinct string its regex can match, so twenty alternatives means at most
+twenty questions.
+
+If a content-gated ask only ever fires once, its pattern is matching a property
+of the file type rather than a signal that something changed. That is worth
+knowing — see the funnel note under **Before you wire it**.
+
+Identity is a hash of the gate and the body, not the line number, so inserting
+a paragraph above an ask changes nothing and editing its prose re-arms it. To
+retire one, delete the block.

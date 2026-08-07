@@ -54,7 +54,7 @@ against the path and the incoming text, and prepends the ones that hit. Before
 the write lands, Claude receives this:
 
 ```
-onsetter — 1 ask for this edit. Each fires once per session.
+onsetter — 1 ask for this edit. Each question is asked once per session.
 
 ▸ corpus/CLAUDE.md:55 · matched "description"
 How would the player know this? Any name, relationship, motive, date, or
@@ -71,8 +71,8 @@ To retire one, delete its block from the file named above.
 
 That is the whole product. Adding an ask is writing a paragraph in a file you
 already have. There is nothing to install per ask and no second source of
-truth. It fires once per session and then goes quiet. To be rid of it, delete
-the block.
+truth. Each question is asked once, then goes quiet. To be rid of it,
+delete the block.
 
 ## The failure it answers
 
@@ -410,11 +410,29 @@ Without the marker the loop is delete a header, rebuild, rerun, repeat.
 
 ## Design
 
-**Fire once per ask per session.** State lives in
-`~/.cache/onsetter/sessions/<session_id>`. A question you have already answered
-is noise the second time, and noise is how you teach someone to scroll past the
-block without reading it. Ask identity is a hash of the gate and the prose, so
-inserting a paragraph above an ask does not re-fire everything below it.
+**Ask each question once per session, where the question is the ask plus the
+text it quoted.** State lives in `~/.cache/onsetter/sessions/<session_id>`. A
+question you have already answered is noise the second time, and noise is how
+you teach someone to scroll past the block without reading it.
+
+Two kinds of block live in this format and want opposite treatment, and neither
+has to declare which it is. A block with no content gate is a reminder — you
+need to know the standard exists, and once you do, saying it again is noise. It
+quotes nothing, so it fires once per session across every file it governs. A
+block with a content gate is an inspection, and *is this narrator overreach* is
+a different question about `you nod` than about `you find yourself`. It keys on
+the quote, so a new match asks again and the same match a second time stays
+quiet. Gating on content is the declaration; there is no header for this.
+
+The ceiling comes from the pattern rather than from a policy. An ask fires at
+most once per distinct string its own regex can match, so an author who wrote
+twenty alternatives has already said those are twenty things worth being asked
+about. And a content-gated ask that only ever fires once is telling you its
+`when:` matches a property of the file type rather than a signal that something
+changed.
+
+Ask identity underneath is a hash of the gate and the prose, so inserting a
+paragraph above an ask does not re-fire everything below it.
 
 **No decay model.** Nothing measurable distinguishes an ask that changed an
 edit from one that was skimmed. A decay algorithm built on a proxy nobody

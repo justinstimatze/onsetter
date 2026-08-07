@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- The fired-set keys on the ask **and the text it quoted back**, so an ask that
+  gates on content asks again when there is something new to look at. Editing
+  forty files in one session used to produce one question; now a new match is a
+  new question and a repeat of the same match stays quiet.
+
+  Two kinds of block live in this format and want opposite treatment, and the
+  block already says which it is. No content gate means nothing to quote, so the
+  key is the bare ask ID and it fires once per session — the reminder case,
+  unchanged. A content gate means it is asking about a specific string, and *is
+  this narrator overreach* is a different question about `you nod` than about
+  `you find yourself`. So the rule is derived rather than configured, and there
+  is no new header.
+
+  The ceiling is authored: an ask fires at most once per distinct string its own
+  regex can match. A content-gated ask that still only fires once is telling you
+  its `when:` matches a property of the file type rather than a signal that
+  anything changed.
+
+  The match is hashed into the key rather than appended — it can be 80 bytes of
+  arbitrary text including newlines, and the store is one key per line. Sessions
+  in flight across the change hold bare IDs, so reminders keep suppressing and
+  content asks re-arm once.
+
 ## v0.2.0 — 2026-08-06
 
 First release with a changelog. `v0.1.0` was cut fifteen commits earlier, before

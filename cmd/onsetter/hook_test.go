@@ -80,12 +80,24 @@ func TestHookEndToEnd(t *testing.T) {
 		t.Errorf("output does not name its source line:\n%s", got)
 	}
 
-	// Same session, same ask: silence. A question already answered is noise.
+	// Same session, same quote: silence. That question has been answered, and
+	// the answer does not change because it is a different file.
 	if again := run(t, bin, cache, map[string]any{
 		"session_id": sid, "tool_name": "Edit",
-		"tool_input": map[string]any{"file_path": target, "new_string": "you nod again"},
+		"tool_input": map[string]any{"file_path": target, "new_string": "and you realize she is stalling"},
 	}); again != "" {
-		t.Errorf("ask fired twice in one session:\n%s", again)
+		t.Errorf("same quote asked twice in one session:\n%s", again)
+	}
+
+	// Same session, same ask, different quote: fires. "Is this narrator
+	// overreach" is a different question about `you nod` than about
+	// `you realize`, and the answers can differ.
+	other := run(t, bin, cache, map[string]any{
+		"session_id": sid, "tool_name": "Edit",
+		"tool_input": map[string]any{"file_path": target, "new_string": "you nod again"},
+	})
+	if !strings.Contains(other, `matched \"you nod\"`) {
+		t.Errorf("a new quote did not re-arm the ask:\n%s", other)
 	}
 
 	// New session: it fires again.
@@ -94,6 +106,42 @@ func TestHookEndToEnd(t *testing.T) {
 		"tool_input": map[string]any{"file_path": target, "new_string": "you nod again"},
 	}); fresh == "" {
 		t.Error("ask did not fire in a new session")
+	}
+}
+
+// A path-only ask is a reminder: the reader needs to know a standard exists,
+// and once they know it, repeating it is noise. It quotes nothing, so there is
+// nothing to key on but the ask itself, and it fires once per session however
+// many files it governs. This is what every ask did before the key carried a
+// match, and the case that would regress if the key ever included the path.
+func TestPathOnlyAskFiresOncePerSession(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	cache := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	mkdir(t, filepath.Join(repo, "corpus", "chars"))
+	write(t, filepath.Join(repo, "corpus", "CLAUDE.md"),
+		"# corpus\n\n```ask\nin: chars/**\n\nDoes this make sense for the world?\n```\n")
+
+	sid := "sess-reminder"
+	one := filepath.Join(repo, "corpus", "chars", "one.md")
+	two := filepath.Join(repo, "corpus", "chars", "two.md")
+	write(t, one, "old")
+	write(t, two, "old")
+
+	got := run(t, bin, cache, map[string]any{
+		"session_id": sid, "tool_name": "Edit",
+		"tool_input": map[string]any{"file_path": one, "new_string": "anything at all"},
+	})
+	if !strings.Contains(got, "Does this make sense for the world?") {
+		t.Fatalf("reminder did not fire on the first edit:\n%s", got)
+	}
+
+	if again := run(t, bin, cache, map[string]any{
+		"session_id": sid, "tool_name": "Edit",
+		"tool_input": map[string]any{"file_path": two, "new_string": "something else entirely"},
+	}); again != "" {
+		t.Errorf("reminder fired again, on a different file with different text:\n%s", again)
 	}
 }
 

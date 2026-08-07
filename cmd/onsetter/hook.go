@@ -99,16 +99,21 @@ func cmdHook() error {
 	var hits []hit
 	var ids []string
 	for _, r := range asks {
-		id := r.ID()
-		if store.Fired(id) {
-			continue
-		}
+		// Matched before fired, because the key includes what matched: a
+		// content ask asking about a string it has not shown you yet is a
+		// question you have not answered. Costs a regex over the incoming text
+		// for asks that turn out to be spent, which is well under the file read
+		// the same edit already paid for.
 		res := r.Match(ev)
 		if !res.OK {
 			continue
 		}
+		key := session.Key(r.ID(), res.Matched)
+		if store.Fired(key) {
+			continue
+		}
 		hits = append(hits, hit{r, res.Matched})
-		ids = append(ids, id)
+		ids = append(ids, key)
 	}
 	// After matching, so an edit never counts as having already satisfied an
 	// `untouched:` gate about itself.
@@ -125,7 +130,7 @@ func cmdHook() error {
 	if len(hits) == 1 {
 		noun = "ask"
 	}
-	fmt.Fprintf(&b, "onsetter — %d %s for this edit. Each fires once per session.\n", len(hits), noun)
+	fmt.Fprintf(&b, "onsetter — %d %s for this edit. Each question is asked once per session.\n", len(hits), noun)
 	for _, h := range hits {
 		gate := "no content gate"
 		if h.matched != "" {
