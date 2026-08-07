@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v0.4.0 — 2026-08-07
+
+Nothing here changes how an existing ask fires. Re-run `onsetter install` to
+pick up the skill; the hook entry it rewrites is the one it already wrote.
+
 - `install` writes `~/.claude/skills/onsetter/SKILL.md` beside the settings
   entry it wires. The hook half of this tool needs no advertisement — it fires
   on the tool call whether or not the agent it fires at knows the tool exists.
