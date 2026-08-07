@@ -1,0 +1,5 @@
+# The built binary at the repo root. The leading slash is load-bearing: a bare
+# `onsetter` also matches cmd/onsetter/, which silently excluded the entire
+# command directory from the first commit.
+/onsetter
+*.bak-*
