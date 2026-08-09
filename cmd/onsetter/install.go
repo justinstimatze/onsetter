@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/justinstimatze/onsetter/internal/ask"
+	"github.com/justinstimatze/onsetter/ask"
 )
 
 // cmdInstall writes the one settings entry onsetter will ever need.

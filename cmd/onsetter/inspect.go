@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
-	"github.com/justinstimatze/onsetter/internal/ask"
+	"github.com/justinstimatze/onsetter/ask"
 	"github.com/justinstimatze/onsetter/internal/discover"
 )
 

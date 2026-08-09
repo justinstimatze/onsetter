@@ -34,7 +34,7 @@ one, so wiring both would have meant two questions on every edit to `hook.go`.
 The one-emitter rule is pinned by a test instead.
 
 ```ask
-in: internal/ask/ask.go
+in: ask/ask.go
 when: case "[a-z-]+":
 
 Adding a header means four places have to agree: this switch, the `Headers`

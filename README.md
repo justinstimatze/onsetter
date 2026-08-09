@@ -322,7 +322,7 @@ CLAUDE.md:47                           6/10      60.0%
 CLAUDE.md:16                           1/10      10.0%
     cmd/onsetter/hook.go  "os.Exit("
 CLAUDE.md:35                           1/10      10.0%
-    internal/ask/ask.go  "case \"in\":"
+    ask/ask.go  "case \"in\":"
 
 A gate tripping on more than a few percent of what it matches is a tax.
 Narrow it, or move the ask closer to the files it is about.

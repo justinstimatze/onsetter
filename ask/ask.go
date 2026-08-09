@@ -179,23 +179,41 @@ func no(gate, pattern, note string) Result {
 
 // Match reports whether the ask applies to a pending write of content to path,
 // and either what its content gate matched or which gate turned it away.
+//
+// path may be empty — a caller outside onsetter's own Write/Edit hook (an MCP
+// tool call with no file path, e.g.) can match content against when:/not:/
+// has: alone. An ask that also sets in:/not-in:/untouched: cannot honor those
+// without a path, so it rejects with a Result naming that instead of running
+// the path-matching code below on an empty string and failing for the wrong
+// reason.
 func (r *Ask) Match(e Edit) Result {
 	path, content, exists := e.Path, e.New, e.Exists
-	rel, err := filepath.Rel(r.Dir, path)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return no("in", r.In, "the file is not under this CLAUDE.md's directory")
-	}
-	slash := filepath.ToSlash(rel)
-	if ok, err := doublestar.Match(r.In, slash); err != nil || !ok {
-		return no("in", r.In, "does not match "+slash)
-	}
-	// `not:` is a content regex, so it cannot exclude a path. Without a
-	// separate key, `not: _test\.go` silently matches nothing and an ask scoped
-	// to a package fires on its tests too — which is how a migrated ask came
-	// to fire on nearly twice the files the script it replaced did.
-	for _, ex := range r.NotIn {
-		if ok, err := doublestar.Match(ex, slash); err == nil && ok {
-			return no("not-in", ex, "matches "+slash)
+	if path == "" {
+		switch {
+		case r.In != "**":
+			return no("in", r.In, "this ask matches in: against a path, and this call has none")
+		case len(r.NotIn) > 0:
+			return no("not-in", r.NotIn[0], "this ask matches not-in: against a path, and this call has none")
+		case len(r.Untouched) > 0:
+			return no("untouched", r.Untouched[0], "this ask matches untouched: against a path, and this call has none")
+		}
+	} else {
+		rel, err := filepath.Rel(r.Dir, path)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return no("in", r.In, "the file is not under this CLAUDE.md's directory")
+		}
+		slash := filepath.ToSlash(rel)
+		if ok, err := doublestar.Match(r.In, slash); err != nil || !ok {
+			return no("in", r.In, "does not match "+slash)
+		}
+		// `not:` is a content regex, so it cannot exclude a path. Without a
+		// separate key, `not: _test\.go` silently matches nothing and an ask scoped
+		// to a package fires on its tests too — which is how a migrated ask came
+		// to fire on nearly twice the files the script it replaced did.
+		for _, ex := range r.NotIn {
+			if ok, err := doublestar.Match(ex, slash); err == nil && ok {
+				return no("not-in", ex, "matches "+slash)
+			}
 		}
 	}
 	switch r.On {

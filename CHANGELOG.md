@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- `internal/ask` is now `ask` — exported so a second module can call the same
+  `Match` logic against its own tool calls, not just onsetter's own
+  `Write`/`Edit` hook. First consumer in mind is winze-agent's
+  `capture-guard`, which gates an MCP call (`winze_remember`) with no file
+  path.
+- `Match` accepts `Edit.Path == ""`. `when:`/`not:`/`has:` run as before; an
+  ask that also sets `in:`, `not-in:`, or `untouched:` rejects and says the
+  ask needs a path, instead of the misleading "the file is not under this
+  CLAUDE.md's directory" a path-less call used to get.
+
 ## v0.4.0 — 2026-08-07
 
 Nothing here changes how an existing ask fires. Re-run `onsetter install` to

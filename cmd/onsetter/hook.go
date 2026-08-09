@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/justinstimatze/onsetter/internal/ask"
+	"github.com/justinstimatze/onsetter/ask"
 	"github.com/justinstimatze/onsetter/internal/discover"
 	"github.com/justinstimatze/onsetter/internal/session"
 )

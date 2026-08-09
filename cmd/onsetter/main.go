@@ -12,7 +12,7 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/justinstimatze/onsetter/internal/ask"
+	"github.com/justinstimatze/onsetter/ask"
 )
 
 // version is overridden at release via

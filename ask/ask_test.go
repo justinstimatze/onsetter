@@ -386,6 +386,63 @@ func TestRejectionNamesTheGateThatRejected(t *testing.T) {
 	}
 }
 
+// A caller outside onsetter's own hook (winze-agent's capture-guard is the
+// motivating one) has no file path to give Match — the text it wants matched
+// lives in an MCP tool argument, not a Write/Edit. when:/not:/has: don't need
+// a path and should still run; in:/not-in:/untouched: do, and must say so
+// instead of failing for a path-scoping reason that does not apply.
+func TestMatchWithoutAPath(t *testing.T) {
+	pathless := Edit{New: "TODO fix this", Disk: "TODO fix this", Exists: true}
+
+	t.Run("when-only ask fires without a path", func(t *testing.T) {
+		r := parseOne(t, "```ask\nwhen: TODO\n\nAsk.\n```\n")
+		if _, ok := match(r, pathless); !ok {
+			t.Error("want a fire: when: does not need a path")
+		}
+	})
+
+	t.Run("default in: does not block a path-less call", func(t *testing.T) {
+		r := parseOne(t, "```ask\nwhen: TODO\n\nAsk.\n```\n") // in: defaults to **
+		if _, ok := match(r, pathless); !ok {
+			t.Error("want a fire: an unset in: is not a path requirement")
+		}
+	})
+
+	cases := []struct {
+		name string
+		src  string
+		gate string
+	}{
+		{"in", "```ask\nin: **/*.md\n\nAsk.\n```\n", "in"},
+		{"not-in", "```ask\nnot-in: **/gen/**\n\nAsk.\n```\n", "not-in"},
+		{"untouched", "```ask\nuntouched: migrations/**\n\nAsk.\n```\n", "untouched"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := parseOne(t, tc.src).Match(pathless)
+			if res.OK {
+				t.Fatalf("fired, want a rejection at %s: — this ask cannot honor %s: without a path", tc.gate, tc.gate)
+			}
+			if res.Gate != tc.gate {
+				t.Errorf("rejected at %q, want %q (%s)", res.Gate, tc.gate, res.Why())
+			}
+			if !strings.Contains(res.Note, "a path") {
+				t.Errorf("Note = %q, want it to say this ask needs a path", res.Note)
+			}
+		})
+	}
+
+	t.Run("on: mint/edit read Exists, not a path", func(t *testing.T) {
+		mint := parseOne(t, "```ask\non: mint\n\nAsk.\n```\n")
+		if _, ok := match(mint, Edit{New: "x", Exists: false}); !ok {
+			t.Error("on: mint should fire on a path-less call with Exists: false")
+		}
+		if _, ok := match(mint, Edit{New: "x", Exists: true}); ok {
+			t.Error("on: mint should not fire on a path-less call with Exists: true")
+		}
+	})
+}
+
 // Every header the parser accepts is in Headers, so the parse error, the
 // reference and replay's funnel cannot fall out of step with the switch.
 func TestHeadersListsEveryHeaderTheParserAccepts(t *testing.T) {

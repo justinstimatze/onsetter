@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/justinstimatze/onsetter/internal/ask"
+	"github.com/justinstimatze/onsetter/ask"
 )
 
 // Names are the files searched in each directory, in the order Claude Code
