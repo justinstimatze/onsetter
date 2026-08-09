@@ -374,6 +374,46 @@ The first glob reached no files at all. The second reached all 27 and the regex
 matched none of them — a live ask pointed at a corpus that does not have the
 thing. Same 0.0% either way, and only one of them is a typo.
 
+## Using `ask` as a library
+
+Everything above assumes onsetter's own hook: a file path and a pending
+`content`/`new_string`. The matching engine underneath is a separate package,
+`github.com/justinstimatze/onsetter/ask`, for a second `PreToolUse` hook that
+wants the same block format against a tool call that is not a `Write` or an
+`Edit` — an MCP tool argument, say, which has no file path at all.
+
+```go
+import "github.com/justinstimatze/onsetter/ask"
+
+asks, _ := ask.ParseFile("CLAUDE.md")
+for _, a := range asks {
+    res := a.Match(ask.Edit{New: note}) // no Path — this call has none
+    if res.OK {
+        // res.Matched is the text the gate hit
+    }
+}
+```
+
+`Edit.Path` can be empty. `when:`, `not:`, and `has:` never looked at a path
+and run exactly as they do against a real file. `in:`, `not-in:`, and
+`untouched:` do — an ask that sets one of those rejects with a `Result`
+saying it needs a path, rather than silently never firing. Write asks meant
+for a path-less caller without them, or expect them to reject every time.
+
+`discover.Roots`, which finds the `CLAUDE.md`s governing a path, is
+unchanged and still needs a real one. A path-less caller has no file to climb
+from, so it has to pick which `CLAUDE.md` governs a call itself — a fixed
+location, a store's own root — rather than discovering it the way `onsetter
+hook` does for a `Write` or `Edit`.
+
+The motivating caller is winze-agent's `capture-guard`, gating
+`winze_remember(note, ...)` the way this hook gates a file write; see
+[`INTEGRATIONS.md`](INTEGRATIONS.md) for the design note. `Ask`, `Edit`,
+`Result`, `Match`, and `Parse*` are the exported names. The package moved out
+of `internal/` because that caller needed to import it, not because the
+surface has settled against more than one consumer — no stability guarantee
+yet.
+
 ## Commands
 
 ```
