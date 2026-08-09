@@ -12,9 +12,13 @@ configuration beyond the `CLAUDE.md` files already in your tree.
 
 **What it reads.** The `CLAUDE.md` and `CLAUDE.local.md` files between an
 edited file and its repository root, the pending tool call on stdin, and —
-only when an ask sets `requires:` — whether a named binary resolves on
-`$PATH`. That check never executes the binary; it only stats directories on
-`$PATH`, the same as a shell resolving a command before running it.
+only when an ask sets `requires:` — whether a named executable exists. That
+name comes from the `CLAUDE.md`, the same trust boundary as everything else
+here: a bare name is resolved by searching `$PATH`, the same as a shell
+about to run a command, but a name containing a slash is checked directly
+and `$PATH` is not consulted at all, so `requires:` can also report whether
+an arbitrary file on disk exists and is executable. Either way this is a
+stat and a permission check — `exec.LookPath` — never an execution.
 
 **What it writes.** One file per session under `~/.cache/onsetter/sessions/`,
 holding rule-identity hashes and nothing else — no paths, no file contents, no

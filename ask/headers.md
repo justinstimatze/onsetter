@@ -88,11 +88,26 @@ machine running onsetter, not about the file or the edit. Checked first,
 before any path or content gate, so a rejection on a machine without the tool
 names the real reason instead of a misleading glob or regex mismatch.
 
-Nothing is ever executed — this is `exec.LookPath`, which only stats `$PATH`
-directories. Repeat for an AND: `requires: stull` plus `requires: git` means
-both. The same ask reports a different rate on a teammate's machine that
-does not have the tool; that is the tradeoff for gating on something outside
-the repo.
+Nothing is ever executed — this is `exec.LookPath`, a stat and a permission
+check. A bare name searches `$PATH`; a name containing a slash is checked
+directly and `$PATH` is not consulted. Repeat for an AND: `requires: stull`
+plus `requires: git` means both. The same ask reports a different rate on a
+teammate's machine that does not have the tool; that is the tradeoff for
+gating on something outside the repo.
+
+Two things worth knowing before this rejects and you cannot see why:
+
+- **It resolves against the `$PATH` onsetter's own process sees, which is not
+  always your shell's.** A tool installed via a GUI app, a version manager
+  (`nvm`, `rbenv`, `goenv`), or into `$GOPATH/bin` can be on the `$PATH` your
+  terminal shows you and absent from the narrower one a non-interactive or
+  GUI-launched process inherits. If `onsetter list` says a tool is missing
+  and `which <tool>` in your terminal disagrees, that gap is the first thing
+  to check, not a broken installation.
+- **It is checked before every other gate, so a rejection here can hide a
+  second, unrelated one.** Installing the tool and still not firing means a
+  different header turned it away; re-run `onsetter list` rather than
+  assuming the fix landed.
 
 ### `in:` — which files
 

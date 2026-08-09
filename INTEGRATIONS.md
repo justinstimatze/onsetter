@@ -20,7 +20,7 @@ Shipped, in README's Recipes section:
 ````
 ```ask
 requires: stull
-in: CLAUDE.md
+in: **/CLAUDE.md
 when: (?i)\b(always|never)\b
 
 This reads like an enforceable rule, not a description. If it names a tool

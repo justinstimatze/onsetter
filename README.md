@@ -395,7 +395,7 @@ on a machine that actually has it — nobody without stull gets asked about it.
 
 ```ask
 requires: stull
-in: CLAUDE.md
+in: **/CLAUDE.md
 when: (?i)\b(always|never)\b
 
 This reads like an enforceable rule, not a description. If it names a tool

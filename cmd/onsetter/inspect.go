@@ -53,6 +53,9 @@ func cmdList(args []string) error {
 		}
 
 		fmt.Printf("\n▸ %s\n", r.Where(base))
+		for _, req := range r.Requires {
+			fmt.Printf("    requires:  %s%s\n", req, mark("requires", req))
+		}
 		fmt.Printf("    in:        %s   (relative to %s)%s\n", r.In, shortOne(r.Dir), mark("in", r.In))
 		for _, x := range r.NotIn {
 			fmt.Printf("    not-in:    %s%s\n", x, mark("not-in", x))

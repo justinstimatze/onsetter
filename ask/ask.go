@@ -193,8 +193,16 @@ func (r *Ask) Match(e Edit) Result {
 	// `requires:` is a fact about the machine, not the file or the edit, so it
 	// runs before anything path- or content-based: a rejection on a machine
 	// without the tool should read "turned away at requires:", not a
-	// misleading glob or regex mismatch. LookPath only stats $PATH — nothing
+	// misleading glob or regex mismatch. LookPath only stats a path — nothing
 	// here is ever executed.
+	//
+	// This means a `requires:`-carrying ask pays a LookPath on every edit in
+	// the session, not just edits its `in:` would otherwise have reached —
+	// unlike every other gate, this one isn't scoped by path first. Left this
+	// way on purpose: LookPath is a handful of stats, and this hook's own cost
+	// is dominated by process spawn (see "No cache" in README's Design
+	// section), so the ordering was chosen for a legible rejection reason, not
+	// against a cost that was never the bottleneck.
 	for _, bin := range r.Requires {
 		if _, err := exec.LookPath(bin); err != nil {
 			return no("requires", bin, "not found on $PATH")
