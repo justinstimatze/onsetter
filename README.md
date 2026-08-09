@@ -132,6 +132,14 @@ were right. An agent mid-edit reads one sentence and either changes course or
 dismisses it in a clause. Advice too imprecise to automate costs almost nothing
 when the recipient was going to process the tokens anyway.
 
+That asymmetry has a floor. A question and a permission prompt fail the same
+way: both hand the decision back to whoever might skip it, at the moment
+they're already mid-task and might skip it again. If the actual failure is
+*the rule was right there and got ignored anyway*, arriving at a better
+moment doesn't remove that dependency — it aims the same mechanism more
+precisely. Removing it takes a check nothing gets a vote on. That's a
+different tool; see [stull](https://github.com/justinstimatze/stull), below.
+
 ## The kinds of ask this holds
 
 The set below runs against a game corpus — a large body of authored text with
@@ -556,9 +564,10 @@ the block — including the next one, which was not wallpaper.
 - [**weir**](https://github.com/justinstimatze/weir) — shell commands.
   Capability probe and antipattern rewriter.
 - [**stull**](https://github.com/justinstimatze/stull) — anything needing a
-  state machine, a fuel budget, or a model in the loop, including the version
-  of an ask where an LLM judges the edit rather than asking you to.
-  onsetter is deliberately not a mesh: one static hook, no branching, no LLM.
+  state machine, a fuel budget, a model in the loop, or an actual block.
+  Where onsetter can only ask, stull can refuse outright — not a
+  better-worded question, a check nothing gets a vote on. onsetter is
+  deliberately not a mesh: one static hook, no branching, no LLM, no block.
 - [**crystal**](https://github.com/justinstimatze/crystal) — moving work that
   *executes* onto deterministic tiers behind a verifier. Different payload;
   asks add a question where no call existed.
