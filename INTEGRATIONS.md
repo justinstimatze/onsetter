@@ -15,20 +15,28 @@ call inside the hook would break it.
 
 ## 1. "always"/"never" in a `CLAUDE.md` → point at stull instead of prose
 
-Needs zero onsetter code. One ask block:
+Shipped, in README's Recipes section:
 
 ````
 ```ask
+requires: stull
 in: CLAUDE.md
 when: (?i)\b(always|never)\b
 
 This reads like an enforceable rule, not a description. If it names a tool
 call whose path and content could carry it, a hook fires on every matching
 call — this line only fires when the file happens to be in context. See
-stull (github.com/justinstimatze/stull)'s "Adding a machine" recipe. If this
-is judgment, attitude, or something no guard could check, continue.
+stull's CLAUDE.md, under "Adding a machine". If this is judgment, attitude,
+or something no guard could check, continue.
 ```
 ````
+
+The `requires: stull` header didn't exist when this was first written down —
+the block was "zero onsetter code," meant to be pasted as-is, and it would
+have fired on every machine whether or not stull was installed. That's a
+different problem from the one below: pasting solves *which repos* the ask
+governs, `requires:` solves *which machines* it's worth asking on at all. Now
+it only ever fires where stull is actually present.
 
 `discover.Roots` stops climbing at the first `.git` it finds
 (`internal/discover/discover.go:43-45`) — "stopping at the repo root is what
@@ -107,5 +115,7 @@ caller can set from its own notion of new-vs-revised memory.
 Not in the interception path either way. stull is the compile target for
 whatever an ask surfaces as mechanical — the thing reached for after
 deciding a rule is a guard, never the thing doing the deciding. No third
-project needed for either integration: (1) is content for a `CLAUDE.md`, (2)
-is an export plus a second caller inside two Go modules that already exist.
+project needed for either integration: (1) is content for a `CLAUDE.md` plus
+a small, general-purpose header (`requires:`) that turned out to be worth
+having on its own; (2) is an export plus a second caller inside two Go
+modules that already exist.

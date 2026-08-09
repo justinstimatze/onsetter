@@ -214,6 +214,7 @@ order `replay` reports a funnel in:
 
 | header | matches | default |
 |---|---|---|
+| `requires` | a binary resolving on `$PATH` — a fact about the machine, not the file | none |
 | `in` | the path — glob relative to **this** `CLAUDE.md`'s directory. `**`, `{a,b}`, `?`, `[...]` | everything below the file |
 | `not-in` | the path — excludes something `in` would have matched | none |
 | `on` | `any`, `mint` (the file does not exist yet), or `edit` | `any` |
@@ -225,8 +226,14 @@ order `replay` reports a funnel in:
 | `when` | the incoming text. `(?i)` for case-insensitive | any content |
 
 `when` and `not` see `content` on a Write and `new_string` on an Edit — the
-replacement span, not the whole file. Repeat `when`, `added`, `removed` or
-`has` for an AND; repeat `not` for an OR of suppressors.
+replacement span, not the whole file. Repeat `when`, `added`, `removed`,
+`has`, or `requires` for an AND; repeat `not` for an OR of suppressors.
+
+`requires` is checked before every other header — it is a fact about the
+machine running onsetter, not the file or the edit, so a rejection on a
+machine without the tool names the real reason instead of a misleading path
+or content mismatch. It never executes anything; `exec.LookPath` only stats
+`$PATH`.
 
 `onsetter headers` prints the full reference: every header with its haystack,
 its gotchas, and a table mapping *what you want to catch* to the gate that
@@ -374,6 +381,30 @@ The first glob reached no files at all. The second reached all 27 and the regex
 matched none of them — a live ask pointed at a corpus that does not have the
 thing. Same 0.0% either way, and only one of them is a typo.
 
+## Recipes
+
+Meant to be copied whole, not adapted — unlike the worked examples above,
+which teach shape for one corpus rather than a block anyone can drop in as-is.
+
+**Point an `always`/`never` rule at a compiled guard instead of leaving it as
+prose.** [stull](https://github.com/justinstimatze/stull) compiles exactly
+this kind of judgment into a hook mesh with a fuel-bounded guarantee that it
+halts; a `CLAUDE.md` line saying "always" or "never" is often that same
+judgment, minus the guarantee. `requires: stull` means this only ever fires
+on a machine that actually has it — nobody without stull gets asked about it.
+
+```ask
+requires: stull
+in: CLAUDE.md
+when: (?i)\b(always|never)\b
+
+This reads like an enforceable rule, not a description. If it names a tool
+call whose path and content could carry it, a hook fires on every matching
+call — this line only fires when the file happens to be in context. See
+stull's CLAUDE.md, under "Adding a machine". If this is judgment, attitude,
+or something no guard could check, continue.
+```
+
 ## Using `ask` as a library
 
 Everything above assumes onsetter's own hook: a file path and a pending
@@ -442,7 +473,7 @@ $ onsetter list corpus/locations/quamash_1962/creek_bridge.json
 ```
 
 It also answers the harder question, which is why an ask you just wrote is
-*not* firing. There are nine headers, and the one that rejected gets marked:
+*not* firing. There are ten headers, and the one that rejected gets marked:
 
 ```
 $ onsetter list corpus/chars/quamash_1962/art_callahan.json

@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -64,6 +65,7 @@ type Ask struct {
 	Untouched []string         // globs no file written this session may match
 	Not       []*regexp.Regexp
 	On        Mode
+	Requires  []string // binary names that must resolve on $PATH
 	Body      string
 }
 
@@ -140,7 +142,7 @@ func Skill() string { return skill }
 // Headers are the header keys a block may carry, in the order Match applies
 // them. One list, so the parse error, the reference in `onsetter headers` and
 // the funnel in `onsetter replay` cannot disagree about what exists.
-var Headers = []string{"in", "not-in", "on", "not", "has", "untouched", "added", "removed", "when"}
+var Headers = []string{"requires", "in", "not-in", "on", "not", "has", "untouched", "added", "removed", "when"}
 
 // Result is the outcome of matching one ask against one edit. When it fired,
 // Matched is the text the content gate hit, so the injection can quote it
@@ -148,7 +150,7 @@ var Headers = []string{"in", "not-in", "on", "not", "has", "untouched", "added",
 // dismiss, and a question about nothing in particular costs an investigation.
 //
 // When it did not fire, Gate names the header that turned it away. There are
-// nine headers now, and "would not fire" said nothing about which one, so
+// ten headers now, and "would not fire" said nothing about which one, so
 // debugging a draft ask meant deleting headers one at a time and rebuilding.
 type Result struct {
 	OK      bool
@@ -188,6 +190,16 @@ func no(gate, pattern, note string) Result {
 // reason.
 func (r *Ask) Match(e Edit) Result {
 	path, content, exists := e.Path, e.New, e.Exists
+	// `requires:` is a fact about the machine, not the file or the edit, so it
+	// runs before anything path- or content-based: a rejection on a machine
+	// without the tool should read "turned away at requires:", not a
+	// misleading glob or regex mismatch. LookPath only stats $PATH — nothing
+	// here is ever executed.
+	for _, bin := range r.Requires {
+		if _, err := exec.LookPath(bin); err != nil {
+			return no("requires", bin, "not found on $PATH")
+		}
+	}
 	if path == "" {
 		switch {
 		case r.In != "**":
@@ -477,6 +489,8 @@ func parseBlock(lines []string, source, dir string, start int) (*Ask, error) {
 			default:
 				return nil, fmt.Errorf("on: %q is not one of any, mint, edit", v)
 			}
+		case "requires":
+			r.Requires = append(r.Requires, v) // repeated requires: is an AND
 		default:
 			return nil, fmt.Errorf("unknown header %q (want %s)%s", k, strings.Join(Headers, ", "), hint)
 		}

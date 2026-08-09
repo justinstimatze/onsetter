@@ -11,6 +11,12 @@
   ask that also sets `in:`, `not-in:`, or `untouched:` rejects and says the
   ask needs a path, instead of the misleading "the file is not under this
   CLAUDE.md's directory" a path-less call used to get.
+- New header: `requires:`. Fires only when a named binary resolves on
+  `$PATH` — a fact about the machine, not the file or the edit — and is
+  checked before every other gate, so a rejection on a machine without the
+  tool names the real reason. Nothing is executed; it is `exec.LookPath`.
+  First use: gating README's stull recipe with `requires: stull`, so it only
+  ever asks on a machine that has stull installed.
 
 ## v0.4.0 — 2026-08-07
 

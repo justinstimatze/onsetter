@@ -366,6 +366,11 @@ func TestRejectionNamesTheGateThatRejected(t *testing.T) {
 			Edit{Path: p, New: "nothing to see", Exists: true},
 			"when", "nothing like it in the incoming text",
 		},
+		{
+			"requires", "```ask\nrequires: definitely-not-a-real-binary-onsetter-test\n\nAsk.\n```\n",
+			Edit{Path: p, New: "x", Exists: true},
+			"requires", "not found on $PATH",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -439,6 +444,57 @@ func TestMatchWithoutAPath(t *testing.T) {
 		}
 		if _, ok := match(mint, Edit{New: "x", Exists: true}); ok {
 			t.Error("on: mint should not fire on a path-less call with Exists: true")
+		}
+	})
+}
+
+// requires: gates on the machine, not the file — go is whatever binary is
+// running this test, so it is present by construction, and the nonsense name
+// is never going to resolve.
+func TestRequiresGatesOnPATH(t *testing.T) {
+	p := filepath.FromSlash("/repo/corpus/chars/betty.md")
+	e := Edit{Path: p, New: "x", Exists: true}
+
+	t.Run("fires when the binary resolves", func(t *testing.T) {
+		r := parseOne(t, "```ask\nrequires: go\n\nAsk.\n```\n")
+		if _, ok := match(r, e); !ok {
+			t.Error("want a fire: go is on $PATH")
+		}
+	})
+
+	t.Run("rejects when it does not", func(t *testing.T) {
+		r := parseOne(t, "```ask\nrequires: definitely-not-a-real-binary-onsetter-test\n\nAsk.\n```\n")
+		if _, ok := match(r, e); ok {
+			t.Error("want a rejection: this binary does not exist")
+		}
+	})
+
+	t.Run("repeated requires: is an AND", func(t *testing.T) {
+		r := parseOne(t, "```ask\nrequires: go\nrequires: definitely-not-a-real-binary-onsetter-test\n\nAsk.\n```\n")
+		res := r.Match(e)
+		if res.OK {
+			t.Fatal("want a rejection: the second requires: does not resolve")
+		}
+		if res.Gate != "requires" || res.Pattern != "definitely-not-a-real-binary-onsetter-test" {
+			t.Errorf("rejected at %q: %q, want requires: naming the missing binary (%s)", res.Gate, res.Pattern, res.Why())
+		}
+	})
+
+	t.Run("checked before in:, so the rejection names the real reason", func(t *testing.T) {
+		// This ask would also fail in: — betty.md is not under locations/.
+		// requires: runs first, so that is what the rejection should name.
+		r := parseOne(t, "```ask\nrequires: definitely-not-a-real-binary-onsetter-test\nin: locations/**\n\nAsk.\n```\n")
+		res := r.Match(e)
+		if res.Gate != "requires" {
+			t.Errorf("rejected at %q, want requires: — it is checked first (%s)", res.Gate, res.Why())
+		}
+	})
+
+	t.Run("path-less call still evaluates requires:", func(t *testing.T) {
+		r := parseOne(t, "```ask\nrequires: definitely-not-a-real-binary-onsetter-test\n\nAsk.\n```\n")
+		res := r.Match(Edit{New: "x", Exists: true})
+		if res.Gate != "requires" {
+			t.Errorf("rejected at %q, want requires: even with no path (%s)", res.Gate, res.Why())
 		}
 	})
 }

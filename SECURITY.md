@@ -11,7 +11,10 @@ onsetter runs locally and sends nothing over the network, ever. It has no
 configuration beyond the `CLAUDE.md` files already in your tree.
 
 **What it reads.** The `CLAUDE.md` and `CLAUDE.local.md` files between an
-edited file and its repository root, and the pending tool call on stdin.
+edited file and its repository root, the pending tool call on stdin, and —
+only when an ask sets `requires:` — whether a named binary resolves on
+`$PATH`. That check never executes the binary; it only stats directories on
+`$PATH`, the same as a shell resolving a command before running it.
 
 **What it writes.** One file per session under `~/.cache/onsetter/sessions/`,
 holding rule-identity hashes and nothing else — no paths, no file contents, no

@@ -49,13 +49,14 @@ nothing while the file looked wired. So `in: internal/**/*.go` there means what
 it looks like it means.
 
 
-## The nine headers
+## The ten headers
 
 Listed in the order `Match` applies them, which is the order `onsetter replay`
 reports a funnel in.
 
 | Header      | Matches                                   | Repeat means |
 |-------------|-------------------------------------------|--------------|
+| `requires`  | a binary resolving on `$PATH`             | AND          |
 | `in`        | the path, as a glob                       | last wins    |
 | `not-in`    | the path, as a glob — excludes            | OR           |
 | `on`        | one of: any, mint, edit                   | last wins    |
@@ -75,6 +76,23 @@ Patterns are Go RE2. **There is no lookahead and no backreference.** To require
 two things, repeat the header — `when: fact_text` plus `when: you realize` is
 the conjunction, and there is no way to write it as one pattern.
 
+
+### `requires:` — a companion tool
+
+```
+requires: stull
+```
+
+Fires only when the named binary resolves on `$PATH` — a fact about the
+machine running onsetter, not about the file or the edit. Checked first,
+before any path or content gate, so a rejection on a machine without the tool
+names the real reason instead of a misleading glob or regex mismatch.
+
+Nothing is ever executed — this is `exec.LookPath`, which only stats `$PATH`
+directories. Repeat for an AND: `requires: stull` plus `requires: git` means
+both. The same ask reports a different rate on a teammate's machine that
+does not have the tool; that is the tradeoff for gating on something outside
+the repo.
 
 ### `in:` — which files
 
@@ -188,6 +206,7 @@ span, not the whole file.** An ask that needs to see the rest of the file wants
 | a file created without its counterpart      | `untouched:`             |
 | a convention that only applies to new files | `on: mint`               |
 | anything at all under one directory         | `in:` alone (no content) |
+| an ask that only makes sense with a companion tool installed | `requires:` |
 
 If a gate would need lookahead, split it across two `when:` lines. If it would
 need to exclude a directory, that is `not-in:`, not `not:`.
