@@ -61,3 +61,21 @@ func TestReplayIsQuietForAsksItCanMeasure(t *testing.T) {
 		t.Errorf("warned about a when: ask, which replay measures fine:\n%s", got)
 	}
 }
+
+// requires: is checked before every other gate, so an ask that never fires
+// because its tool is missing should have the funnel say so by name — not
+// "in: ×1", which would read as a path bug that does not exist.
+func TestReplayFunnelsRequires(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	mkdir(t, filepath.Join(repo, "corpus"))
+	write(t, filepath.Join(repo, "CLAUDE.md"),
+		"```ask\nin: corpus/**\nrequires: definitely-not-a-real-binary-onsetter-test\nwhen: aliases\n\nAn alias.\n```\n")
+	write(t, filepath.Join(repo, "corpus", "a.json"), `{"aliases": ["take"]}`)
+
+	got := replayIn(t, bin, repo, "corpus/a.json")
+	if !strings.Contains(got, "requires: definitely-not-a-real-binary-onsetter-test ×1") {
+		t.Errorf("funnel does not name requires: as what turned the file away:\n%s", got)
+	}
+}
