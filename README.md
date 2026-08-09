@@ -391,8 +391,8 @@ thing. Same 0.0% either way, and only one of them is a typo.
 
 ## Recipes
 
-Meant to be copied whole, not adapted — unlike the worked examples above,
-which teach shape for one corpus rather than a block anyone can drop in as-is.
+These are meant to be copied whole. The worked examples above teach shape
+for one corpus; a recipe is a block anyone can drop in as-is.
 
 **Point an `always`/`never` rule at a compiled guard instead of leaving it as
 prose.** [stull](https://github.com/justinstimatze/stull) compiles exactly
@@ -449,9 +449,9 @@ The motivating caller is winze-agent's `capture-guard`, gating
 `winze_remember(note, ...)` the way this hook gates a file write; see
 [`INTEGRATIONS.md`](INTEGRATIONS.md) for the design note. `Ask`, `Edit`,
 `Result`, `Match`, and `Parse*` are the exported names. The package moved out
-of `internal/` because that caller needed to import it, not because the
-surface has settled against more than one consumer — no stability guarantee
-yet.
+of `internal/` because that caller needed to import it. The surface hasn't
+settled against more than one consumer yet, so there's no stability
+guarantee.
 
 ## Commands
 
