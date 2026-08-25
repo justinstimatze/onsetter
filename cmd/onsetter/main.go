@@ -66,6 +66,10 @@ const usage = `onsetter — asks that arrive at the edit, not at session start.
   onsetter warm [dir]        Embed every evokes: phrase under dir into the
                              local cache. Run after adding or editing one —
                              hook never fills a cache miss itself.
+  onsetter calib <ask> <fires-glob> <not-glob>
+                             Measure one evokes: ask against labeled examples
+                             you supply — the equivalent of replay for a gate
+                             that has no ground truth of its own.
   onsetter headers           Full reference for writing one. Read this before
                              drafting an ask; it is the only complete list.
   onsetter --version
@@ -126,6 +130,8 @@ func main() {
 		err = cmdLint(args[1:])
 	case "warm":
 		err = cmdWarm(args[1:])
+	case "calib":
+		err = cmdCalib(args[1:])
 	case "headers":
 		fmt.Print(ask.Reference())
 	case "--version", "-v", "version":

@@ -28,6 +28,14 @@
   close to none on a whole code file, where syntax dilutes the match almost
   to noise — the regex headers already own that case precisely. New command:
   `onsetter warm [dir]`.
+- New command: `onsetter calib <ask> <fires-glob> <not-glob>` — `replay`'s
+  counterpart for `evokes:`, the one header whose fire/no-fire is not its own
+  ground truth. Reports the weakest true positive against the strongest
+  false-positive risk from an author-supplied labeled example set, and says
+  plainly when the two overlap: no threshold separates them, and the fix is
+  rewording the phrases, not the number. Built after a cross-project
+  exchange showed a threshold measured against a handful of hand-picked
+  pairs does not reliably generalize even to an adjacent matching regime.
 
 ## v0.4.0 — 2026-08-07
 

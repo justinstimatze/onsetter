@@ -57,6 +57,13 @@ Unlike every other header, it needs a local cache built ahead of time — a
 phrase added since the last `warm` silently never fires, so re-run it after
 drafting or editing one.
 
+It also has no ground truth of its own the way a regex does, so `replay`'s
+rate cannot tell you whether the threshold is right. `onsetter calib <ask>
+<fires-glob> <not-glob>` is the equivalent for this one header: point it at
+labeled positive and negative examples and it reports where they actually
+land — including whether they overlap, in which case the fix is rewording
+the phrases, not picking a different number.
+
 ## What replay cannot tell you
 
 **It measures cost, never catch.** The corpus has already been cleaned of the

@@ -123,16 +123,34 @@ func (c *Cache) WarmQuery(phrase string, budget time.Duration) error {
 	return nil
 }
 
+// Score returns phrase's raw cosine similarity against editVector — the
+// number Predicate collapses into a boolean. `onsetter calib` needs the
+// number: a threshold decision is exactly what it exists to inform, so it
+// cannot be the thing doing the collapsing. ok=false means phrase has no
+// cached vector under model, the same "not warmed" signal Vector gives.
+func (c *Cache) Score(phrase string, editVector []float32, model string) (score float32, ok bool) {
+	v, ok := c.Vector(phrase, model)
+	if !ok {
+		return 0, false
+	}
+	return Cosine(v, editVector), true
+}
+
+// ScoreQuery scores phrase against editVector, looked up under this
+// package's cache tag — the same one Warm/WarmQuery/Predicate use, so
+// `onsetter calib` gets a raw number to report without ever needing to know
+// what that tag actually is.
+func (c *Cache) ScoreQuery(phrase string, editVector []float32) (score float32, ok bool) {
+	return c.Score(phrase, editVector, cacheModelTag)
+}
+
 // Predicate builds an ask.Edit.Evokes-shaped function from an edit's own
 // vector: each phrase's cached vector is looked up (never computed here) and
 // scored by cosine similarity against threshold. A cache miss scores false,
 // the same fail-soft shape a missing requires: binary uses.
 func (c *Cache) Predicate(editVector []float32, model string, threshold float32) func(phrase string) bool {
 	return func(phrase string) bool {
-		v, ok := c.Vector(phrase, model)
-		if !ok {
-			return false
-		}
-		return Cosine(v, editVector) >= threshold
+		score, ok := c.Score(phrase, editVector, model)
+		return ok && score >= threshold
 	}
 }

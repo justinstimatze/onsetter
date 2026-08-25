@@ -314,6 +314,38 @@ but bury it in a page of syntax and the score drops to barely above noise.
 or prose files — the regex headers above it already own code-shaped
 triggers, and that split is measured, not a style preference.
 
+A regex header gets `replay` for free — its own match or no-match is its own
+ground truth, no labels needed. `evokes` doesn't have that: whether a fuzzy
+score *should* fire is not self-evident from the number. `onsetter calib`
+is `replay`'s counterpart for this one header — point it at an ask and two
+globs of files you've labeled fires and not, and it reports where the true
+positives and true negatives actually land relative to the threshold:
+
+```
+$ onsetter calib CLAUDE.md 'fires/**' 'not/**'
+3 positive example(s), 2 negative example(s), threshold 0.48
+
+positive scores (weakest first):
+    fires/subtle.md                          0.563
+    fires/paraphrase.md                      0.577
+    fires/direct.md                          0.732
+
+negative scores (strongest first):
+    not/close.md                             0.586   ← fires (false positive)
+    not/unrelated.md                         0.475
+
+POS floor 0.563 (fires/subtle.md)   NEG ceiling 0.586 (not/close.md)
+overlap 0.024 — no single threshold separates every example given;
+the evokes: phrases or the examples themselves need rework, not just a number
+```
+
+Five examples were enough to catch this: "reviewed the PR carefully and left
+three comments" scored above the weakest genuine match, meaning no threshold
+separates that pair — the phrases need rewording, not a different number.
+That is the whole reason this exists as a real tool rather than a hand-run
+scratch test: the number that matters is whichever example set an author
+actually built, not the two or three pairs it shipped measured against.
+
 Most blocks are one header and a paragraph. An ask in `corpus/CLAUDE.md` with
 no `in:` governs everything under `corpus/`, which is the scope its author can
 actually reason about.
@@ -486,6 +518,8 @@ onsetter list [path]       what governs this path, and what would fire now
 onsetter replay <glob>...  fire rate of every ask against a corpus
 onsetter lint [dir]        parse every block; refuse the ones that say nothing
 onsetter warm [dir]        embed every evokes: phrase under dir into the cache
+onsetter calib <ask> <fires-glob> <not-glob>
+                           measure one evokes: ask against labeled examples
 onsetter headers           the full reference for writing one
 onsetter --version
 ```
