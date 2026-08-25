@@ -232,6 +232,7 @@ order `replay` reports a funnel in:
 | `added` | only the lines this edit introduces | — |
 | `removed` | only the lines this edit deletes | — |
 | `when` | the incoming text. `(?i)` for case-insensitive | any content |
+| `evokes` | the incoming text, semantically — not a regex | none |
 
 `when` and `not` see `content` on a Write and `new_string` on an Edit — the
 replacement span, not the whole file. Repeat `when`, `added`, `removed`,
@@ -289,6 +290,29 @@ never reaches a `PreToolUse` hook on Write or Edit, so it still counts as
 untouched and the ask fires anyway — dismissible in a sentence, but worth
 knowing before you write one. The path in hand is recorded *after* matching, so
 an edit never satisfies an `untouched:` gate about itself.
+
+`evokes` is the one header that isn't a regex or a glob — it's a fuzzy trigger
+phrase, and repeating it is an OR (fires on any one), not the AND every other
+repeatable header uses:
+
+```ask
+evokes: committing without asking the user first
+evokes: pushing straight to the main branch
+
+Never commit or push without explicit confirmation.
+```
+
+It needs setup nothing else here does. `onsetter warm` embeds every `evokes:`
+phrase into a local cache ahead of time — the hook never fills a cache miss
+itself, so a phrase added since the last `warm` silently never fires. It also
+needs [Ollama](https://ollama.com) running locally with an embedding model
+pulled; missing either one degrades to "this ask does not fire," never an
+error. And it has almost no signal on a whole code file: a true paraphrase
+scores well above an unrelated sentence when the relevant text stands alone,
+but bury it in a page of syntax and the score drops to barely above noise.
+`evokes` is for a topic or a shape of reasoning in comments, commit messages,
+or prose files — the regex headers above it already own code-shaped
+triggers, and that split is measured, not a style preference.
 
 Most blocks are one header and a paragraph. An ask in `corpus/CLAUDE.md` with
 no `in:` governs everything under `corpus/`, which is the scope its author can
@@ -461,6 +485,7 @@ onsetter install           wire ~/.claude/settings.local.json, write the skill
 onsetter list [path]       what governs this path, and what would fire now
 onsetter replay <glob>...  fire rate of every ask against a corpus
 onsetter lint [dir]        parse every block; refuse the ones that say nothing
+onsetter warm [dir]        embed every evokes: phrase under dir into the cache
 onsetter headers           the full reference for writing one
 onsetter --version
 ```
@@ -481,7 +506,7 @@ $ onsetter list corpus/locations/quamash_1962/creek_bridge.json
 ```
 
 It also answers the harder question, which is why an ask you just wrote is
-*not* firing. There are ten headers, and the one that rejected gets marked:
+*not* firing. There are eleven headers, and the one that rejected gets marked:
 
 ```
 $ onsetter list corpus/chars/quamash_1962/art_callahan.json

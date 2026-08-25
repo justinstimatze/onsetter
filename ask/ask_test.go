@@ -371,6 +371,16 @@ func TestRejectionNamesTheGateThatRejected(t *testing.T) {
 			Edit{Path: p, New: "x", Exists: true},
 			"requires", "not found on $PATH",
 		},
+		{
+			"evokes nil predicate", "```ask\nevokes: committing without asking\n\nAsk.\n```\n",
+			Edit{Path: p, New: "x", Exists: true}, // Evokes left nil
+			"evokes", "the edit does not evoke any of these",
+		},
+		{
+			"evokes predicate says no", "```ask\nevokes: committing without asking\n\nAsk.\n```\n",
+			Edit{Path: p, New: "x", Exists: true, Evokes: func(string) bool { return false }},
+			"evokes", "the edit does not evoke any of these",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -497,6 +507,88 @@ func TestRequiresGatesOnPATH(t *testing.T) {
 			t.Errorf("rejected at %q, want requires: even with no path (%s)", res.Gate, res.Why())
 		}
 	})
+}
+
+// evokes: takes a caller-supplied predicate instead of doing any matching
+// itself — Match stays pure and network-free, and the whole embedding
+// pipeline (internal/embed) is exercised nowhere near this package.
+func TestEvokesGatesOnAPredicate(t *testing.T) {
+	p := filepath.FromSlash("/repo/corpus/chars/betty.md")
+	e := Edit{Path: p, New: "x", Exists: true}
+
+	t.Run("fires when the predicate matches", func(t *testing.T) {
+		r := parseOne(t, "```ask\nevokes: committing without asking\n\nAsk.\n```\n")
+		e := e
+		e.Evokes = func(string) bool { return true }
+		matched, ok := match(r, e)
+		if !ok {
+			t.Fatal("want a fire: predicate returns true")
+		}
+		if matched != "committing without asking" {
+			t.Errorf("Matched = %q, want the evoked phrase", matched)
+		}
+	})
+
+	t.Run("rejects when the predicate never matches", func(t *testing.T) {
+		r := parseOne(t, "```ask\nevokes: committing without asking\n\nAsk.\n```\n")
+		e := e
+		e.Evokes = func(string) bool { return false }
+		if _, ok := match(r, e); ok {
+			t.Error("want a rejection: predicate returns false for every phrase")
+		}
+	})
+
+	t.Run("repeated evokes: is an OR, unlike requires:'s AND", func(t *testing.T) {
+		r := parseOne(t, "```ask\nevokes: pushing to prod\nevokes: committing without asking\n\nAsk.\n```\n")
+		e := e
+		e.Evokes = func(phrase string) bool { return phrase == "committing without asking" }
+		matched, ok := match(r, e)
+		if !ok {
+			t.Fatal("want a fire: the second phrase matches, and evokes: is an OR")
+		}
+		if matched != "committing without asking" {
+			t.Errorf("Matched = %q, want the phrase that actually matched", matched)
+		}
+	})
+
+	t.Run("nil predicate rejects rather than blocking on it", func(t *testing.T) {
+		r := parseOne(t, "```ask\nevokes: committing without asking\n\nAsk.\n```\n")
+		if _, ok := match(r, e); ok { // e.Evokes is nil
+			t.Error("want a rejection: no fuzzy stage ran for this call")
+		}
+	})
+
+	t.Run("checked after when:, so a failing when: names the real reason", func(t *testing.T) {
+		r := parseOne(t, "```ask\nwhen: TODO\nevokes: committing without asking\n\nAsk.\n```\n")
+		e := e
+		e.Evokes = func(string) bool { return true } // would fire, if reached
+		res := r.Match(e)
+		if res.OK {
+			t.Fatal("want a rejection: when: does not match")
+		}
+		if res.Gate != "when" {
+			t.Errorf("rejected at %q, want when: — evokes: runs last (%s)", res.Gate, res.Why())
+		}
+	})
+}
+
+// An evokes:-only ask narrows on content just as much as a when:-only one —
+// onsetter lint should not flag it as a banner.
+func TestGatedCountsEvokes(t *testing.T) {
+	r := parseOne(t, "```ask\nevokes: committing without asking\n\nAsk.\n```\n")
+	if !r.Gated() {
+		t.Error("an evokes:-only ask should be Gated()")
+	}
+}
+
+// Identity has to move when the phrase list does, the same as every other
+// header: editing an ask re-arms it instead of staying silently fired.
+func TestIDChangesWithEvokes(t *testing.T) {
+	a := parseOne(t, "```ask\nevokes: one thing\n\nAsk.\n```\n")
+	b := parseOne(t, "```ask\nevokes: a different thing\n\nAsk.\n```\n")
+	if a.ID() == b.ID() {
+		t.Error("two asks with different evokes: phrases got the same ID")
+	}
 }
 
 // Every header the parser accepts is in Headers, so the parse error, the

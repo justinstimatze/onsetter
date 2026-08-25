@@ -63,6 +63,9 @@ const usage = `onsetter — asks that arrive at the edit, not at session start.
   onsetter replay <glob>...  Fire rate of every ask against a corpus. Run this
                              before wiring an ask: every first draft over-fires.
   onsetter lint [dir]        Parse every ask under dir.
+  onsetter warm [dir]        Embed every evokes: phrase under dir into the
+                             local cache. Run after adding or editing one —
+                             hook never fills a cache miss itself.
   onsetter headers           Full reference for writing one. Read this before
                              drafting an ask; it is the only complete list.
   onsetter --version
@@ -81,6 +84,7 @@ An ask is a fenced block in any CLAUDE.md:
 Headers, one blank line, then the prose. Every header is optional, and they
 apply in this order — which is the order ` + "`replay`" + ` reports a funnel in:
 
+  requires   a binary resolving on $PATH — a fact about the machine, not the file
   in         glob, relative to this CLAUDE.md's directory  (default: all below)
   not-in     glob excluding a path that in would match
   on         any | mint | edit — mint means the file does not exist yet
@@ -90,11 +94,13 @@ apply in this order — which is the order ` + "`replay`" + ` reports a funnel i
   added      regex against the lines this edit introduces
   removed    regex against the lines this edit deletes
   when       regex against the incoming text
+  evokes     a fuzzy trigger phrase, not a regex — fires on any one, not all
 
-Repeat a regex header for an AND (` + "`not`" + ` for an OR); RE2 has no lookahead, so
-that is the only way to require two things. Use not-in, never not, to exclude a
-path: not is a content regex, so ` + "`not: _test\\.go`" + ` matches nothing and the
-ask fires on the tests anyway.
+Repeat a regex header for an AND (` + "`not`" + ` is an OR of suppressors, and
+` + "`evokes`" + ` — not a regex at all — is an OR too); RE2 has no lookahead, so
+repeating is the only way to require two things. Use not-in, never not, to
+exclude a path: not is a content regex, so ` + "`not: _test\\.go`" + ` matches
+nothing and the ask fires on the tests anyway.
 
 ` + "`onsetter headers`" + ` explains each one, with the gotchas.
 `
@@ -118,6 +124,8 @@ func main() {
 		err = cmdReplay(args[1:])
 	case "lint":
 		err = cmdLint(args[1:])
+	case "warm":
+		err = cmdWarm(args[1:])
 	case "headers":
 		fmt.Print(ask.Reference())
 	case "--version", "-v", "version":

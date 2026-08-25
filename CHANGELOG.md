@@ -17,6 +17,17 @@
   tool names the real reason. Nothing is executed; it is `exec.LookPath`.
   First use: gating README's stull recipe with `requires: stull`, so it only
   ever asks on a machine that has stull installed.
+- New header: `evokes:`. A fuzzy trigger phrase, not a regex — fires on any
+  one of a repeated list, the opposite of `when:`'s AND. Backed by a local
+  Ollama embedding call and a warm, on-disk cache (`onsetter warm` builds it;
+  `onsetter hook` never fills a cache miss itself), with a same-turn score
+  as the whole decision — no deferred judge pass, on the reasoning that every
+  onsetter ask is already built to be cheap to dismiss. Measured directly
+  against real content rather than borrowing a threshold from elsewhere: has
+  real signal on prose-shaped edits (comments, commit messages, docs) and
+  close to none on a whole code file, where syntax dilutes the match almost
+  to noise — the regex headers already own that case precisely. New command:
+  `onsetter warm [dir]`.
 
 ## v0.4.0 — 2026-08-07
 

@@ -66,6 +66,7 @@ type Ask struct {
 	Not       []*regexp.Regexp
 	On        Mode
 	Requires  []string // binary names that must resolve on $PATH
+	Evokes    []string // fuzzy trigger phrases; fires on any one, not all
 	Body      string
 }
 
@@ -82,6 +83,13 @@ type Edit struct {
 	// `list` and `replay`, which have no session to speak of.
 	Touched []string
 	Exists  bool
+	// Evokes answers whether the edit's content evokes a phrase from an ask's
+	// evokes: list. Nil means no fuzzy stage ran for this call — every
+	// evokes:-gated ask rejects rather than blocking on it, the same fail-soft
+	// shape requires: uses for a missing binary. Match never calls out to an
+	// embedding model or a cache itself; that machinery, and the threshold
+	// decision, live entirely on the caller's side of this function value.
+	Evokes func(phrase string) bool
 }
 
 // ID is stable across edits elsewhere in the file and changes when the ask
@@ -89,17 +97,17 @@ type Edit struct {
 // paragraph above an ask would make every ask below it fire again.
 func (r *Ask) ID() string {
 	h := sha256.New()
-	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s",
+	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s",
 		r.In, strings.Join(r.NotIn, "\x01"), reSrc(r.When), reSrc(r.Added),
 		reSrc(r.Removed)+"\x02"+reSrc(r.Has)+"\x03"+strings.Join(r.Untouched, "\x01"),
-		reSrc(r.Not), r.On, r.Body)
+		reSrc(r.Not), r.On, strings.Join(r.Evokes, "\x01"), r.Body)
 	return hex.EncodeToString(h.Sum(nil))[:12]
 }
 
 // Gated reports whether the ask narrows on content at all. An ask with no
 // content gate and no path narrowing is a banner.
 func (r *Ask) Gated() bool {
-	return len(r.When)+len(r.Added)+len(r.Removed)+len(r.Has)+len(r.Untouched) > 0
+	return len(r.When)+len(r.Added)+len(r.Removed)+len(r.Has)+len(r.Untouched)+len(r.Evokes) > 0
 }
 
 func reSrc(res []*regexp.Regexp) string {
@@ -142,7 +150,7 @@ func Skill() string { return skill }
 // Headers are the header keys a block may carry, in the order Match applies
 // them. One list, so the parse error, the reference in `onsetter headers` and
 // the funnel in `onsetter replay` cannot disagree about what exists.
-var Headers = []string{"requires", "in", "not-in", "on", "not", "has", "untouched", "added", "removed", "when"}
+var Headers = []string{"requires", "in", "not-in", "on", "not", "has", "untouched", "added", "removed", "when", "evokes"}
 
 // Result is the outcome of matching one ask against one edit. When it fired,
 // Matched is the text the content gate hit, so the injection can quote it
@@ -150,7 +158,7 @@ var Headers = []string{"requires", "in", "not-in", "on", "not", "has", "untouche
 // dismiss, and a question about nothing in particular costs an investigation.
 //
 // When it did not fire, Gate names the header that turned it away. There are
-// ten headers now, and "would not fire" said nothing about which one, so
+// eleven headers now, and "would not fire" said nothing about which one, so
 // debugging a draft ask meant deleting headers one at a time and rebuilding.
 type Result struct {
 	OK      bool
@@ -312,6 +320,28 @@ func (r *Ask) Match(e Edit) Result {
 		}
 		if matched == "" {
 			matched = m
+		}
+	}
+	// `evokes:` is fuzzy and every other gate here is exact, so it runs last —
+	// only an edit every crisp glob and regex already let through pays for it.
+	// It is an OR across the list (fires if the edit evokes any one phrase),
+	// the opposite of when:'s AND, because these are independent conceptual
+	// cues rather than conditions that must all hold at once. A nil e.Evokes
+	// means no fuzzy stage ran for this call at all — every phrase rejects,
+	// the same shape requires: uses when the binary is missing.
+	if len(r.Evokes) > 0 {
+		hit := ""
+		for _, phrase := range r.Evokes {
+			if e.Evokes != nil && e.Evokes(phrase) {
+				hit = phrase
+				break
+			}
+		}
+		if hit == "" {
+			return no("evokes", r.Evokes[0], "the edit does not evoke any of these")
+		}
+		if matched == "" {
+			matched = hit
 		}
 	}
 	return Result{OK: true, Matched: clip(matched)}
@@ -499,6 +529,8 @@ func parseBlock(lines []string, source, dir string, start int) (*Ask, error) {
 			}
 		case "requires":
 			r.Requires = append(r.Requires, v) // repeated requires: is an AND
+		case "evokes":
+			r.Evokes = append(r.Evokes, v) // repeated evokes: is an OR; not a regex
 		default:
 			return nil, fmt.Errorf("unknown header %q (want %s)%s", k, strings.Join(Headers, ", "), hint)
 		}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/justinstimatze/onsetter/ask"
 	"github.com/justinstimatze/onsetter/internal/discover"
+	"github.com/justinstimatze/onsetter/internal/embed"
 	"github.com/justinstimatze/onsetter/internal/session"
 )
 
@@ -88,6 +89,15 @@ func cmdHook() error {
 			if err == nil {
 				ev.Disk = string(b)
 			}
+			break
+		}
+	}
+	// Same principle for the one live embed call: only paid when some ask
+	// actually has an evokes: list, and paid once regardless of how many do —
+	// they all score against the same edit content.
+	for _, r := range asks {
+		if len(r.Evokes) > 0 {
+			ev.Evokes = embed.BuildPredicate(content, embed.DefaultBudget)
 			break
 		}
 	}

@@ -6,11 +6,19 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/justinstimatze/onsetter/ask"
 	"github.com/justinstimatze/onsetter/internal/discover"
+	"github.com/justinstimatze/onsetter/internal/embed"
 )
+
+// interactiveBudget is the embed-call ceiling for list and replay: both are
+// run by a human waiting on purpose, not a blocked tool call, so this can sit
+// well above embed.DefaultBudget the way lexicon's own UserPromptSubmit-cadence
+// call does relative to its per-edit one.
+const interactiveBudget = 3 * time.Second
 
 // cmdList answers "what is watching this file, and why". Without it, an ask
 // that fires from three directories up is a question with no visible author.
@@ -38,9 +46,17 @@ func cmdList(args []string) error {
 	exists := readErr == nil
 	base, _ := os.Getwd()
 
+	var evokes func(string) bool
+	for _, r := range asks {
+		if len(r.Evokes) > 0 {
+			evokes = embed.BuildPredicate(string(content), interactiveBudget)
+			break
+		}
+	}
+
 	fmt.Printf("%d ask(s) govern %s\n", len(asks), target)
 	for _, r := range asks {
-		res := r.Match(ask.Edit{Path: abs, New: string(content), Disk: string(content), Exists: exists})
+		res := r.Match(ask.Edit{Path: abs, New: string(content), Disk: string(content), Exists: exists, Evokes: evokes})
 		// The rejection is marked on the header that caused it rather than
 		// stated below, because a verdict line has to repeat the pattern to be
 		// useful and the pattern is already on screen. Every gate that can
@@ -80,6 +96,16 @@ func cmdList(args []string) error {
 		}
 		for _, w := range r.When {
 			fmt.Printf("    when:      %s%s\n", w, mark("when", w.String()))
+		}
+		// Not mark(): evokes: rejects when none of its phrases match, so there
+		// is no single villain the way a failing when: or has: has one — every
+		// line earns the same note, not just the one Result happens to name.
+		evokesNote := ""
+		if !res.OK && res.Gate == "evokes" {
+			evokesNote = "   ← " + res.Note
+		}
+		for _, ev := range r.Evokes {
+			fmt.Printf("    evokes:    %s%s\n", ev, evokesNote)
 		}
 		switch {
 		case res.OK && res.Matched == "":
@@ -134,6 +160,13 @@ func cmdReplay(args []string) error {
 			continue
 		}
 		asks, _ := discover.Asks(f)
+		var evokes func(string) bool
+		for _, r := range asks {
+			if len(r.Evokes) > 0 {
+				evokes = embed.BuildPredicate(string(content), interactiveBudget)
+				break
+			}
+		}
 		for _, r := range asks {
 			id := r.ID()
 			s, ok := stats[id]
@@ -148,7 +181,7 @@ func cmdReplay(args []string) error {
 			// simulated below, because it is not what a run would have done.
 			exists := r.On != ask.ModeMint
 			s.eligible++
-			res := r.Match(ask.Edit{Path: f, New: string(content), Disk: string(content), Exists: exists})
+			res := r.Match(ask.Edit{Path: f, New: string(content), Disk: string(content), Exists: exists, Evokes: evokes})
 			if res.OK {
 				s.fired++
 				if len(s.samples) < 3 {

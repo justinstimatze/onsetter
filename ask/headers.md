@@ -49,7 +49,7 @@ nothing while the file looked wired. So `in: internal/**/*.go` there means what
 it looks like it means.
 
 
-## The ten headers
+## The eleven headers
 
 Listed in the order `Match` applies them, which is the order `onsetter replay`
 reports a funnel in.
@@ -66,6 +66,7 @@ reports a funnel in.
 | `added`     | the lines this edit introduces            | AND          |
 | `removed`   | the lines this edit deletes               | AND          |
 | `when`      | the incoming text                         | AND          |
+| `evokes`    | the incoming text, fuzzily — not a regex  | OR           |
 
 Globs are [doublestar](https://github.com/bmatcuk/doublestar) and resolve
 against the directory of the `CLAUDE.md` the ask lives in — never the repo root
@@ -209,6 +210,44 @@ The catch-all content gate. **On an Edit this is `new_string` — the replacemen
 span, not the whole file.** An ask that needs to see the rest of the file wants
 `has:`, not `when:`.
 
+### `evokes:` — a fuzzy trigger phrase
+
+```
+evokes: committing without asking first
+evokes: pushing straight to main
+```
+
+Not a regex. Fires when the edit's content is a semantic match for *any* one
+of these phrases, even without sharing a word with it — the opposite of
+`when:`'s exact AND, because these are independent conceptual cues rather
+than conditions that must all hold at once. Checked last, after every other
+gate: it is the fuzziest header here, so only an edit every crisp glob and
+regex already let through pays for it.
+
+This needs setup the other headers don't. `onsetter warm` has to run first,
+embedding every `evokes:` phrase under a directory into a local cache —
+`onsetter hook` never fills a cache miss itself, so a phrase added since the
+last `warm` silently never fires, the same way a `requires:` binary that
+is not installed silently never fires. Run `onsetter warm` again after
+adding or editing an `evokes:` line. It also needs Ollama running locally
+with the embedding model pulled; either one being unavailable degrades to
+"this ask does not fire," never an error.
+
+The similarity threshold has real measurement behind it but is still a first
+draft, not a calibrated one — one machine, one model, a handful of data
+points, and there is no equivalent yet of the file-by-file rate `onsetter
+replay` gives every other header. Treat a freshly written `evokes:` ask the
+same as any other first draft: replay it before trusting the rate.
+
+**It has almost no signal on a whole code file, only on prose.** A sentence
+that clearly evokes a phrase scores well above an unrelated one when matched
+in isolation — but embed the whole file it lives in, syntax and all, and the
+score drops to barely above what an unrelated file scores. The surrounding
+code dilutes the match almost to noise. `evokes:` is for a topic or a shape
+of reasoning in comments, commit messages, or prose files; the regex headers
+above it already own code-shaped triggers precisely, and that division is
+not a style preference — it is where this header's signal actually lives.
+
 
 ## Choosing a gate
 
@@ -222,6 +261,7 @@ span, not the whole file.** An ask that needs to see the rest of the file wants
 | a convention that only applies to new files | `on: mint`               |
 | anything at all under one directory         | `in:` alone (no content) |
 | an ask that only makes sense with a companion tool installed | `requires:` |
+| a topic or a shape of reasoning, not a fixed string | `evokes:`         |
 
 If a gate would need lookahead, split it across two `when:` lines. If it would
 need to exclude a directory, that is `not-in:`, not `not:`.

@@ -1,6 +1,6 @@
 ---
 name: onsetter
-description: How to write, measure and wire an onsetter ask — prose in a fenced ask block inside an ordinary CLAUDE.md, injected in front of the Write or Edit that trips its gate. Read this before adding or changing an ask block, before picking a header (requires, in, not-in, on, not, has, untouched, added, removed, when), and whenever a CLAUDE.md in the tree already contains ask fences. Covers where the block goes, the replay-before-wiring rule, the two things replay cannot measure, and why a wide gate now costs more than it used to.
+description: How to write, measure and wire an onsetter ask — prose in a fenced ask block inside an ordinary CLAUDE.md, injected in front of the Write or Edit that trips its gate. Read this before adding or changing an ask block, before picking a header (requires, in, not-in, on, not, has, untouched, added, removed, when, evokes), and whenever a CLAUDE.md in the tree already contains ask fences. Covers where the block goes, the replay-before-wiring rule, the two things replay cannot measure, and why a wide gate now costs more than it used to.
 ---
 
 # Writing an onsetter ask
@@ -20,7 +20,7 @@ side needs no discovery; the authoring side does.
 onsetter headers
 ```
 
-All ten headers with their haystacks, the gotchas, and a
+All eleven headers with their haystacks, the gotchas, and a
 what-you-want-to-catch table. It ships inside the binary, so it always
 describes the version actually installed. Read it rather than working from
 memory of this file — the trap that keeps catching people is `not:`, which is a
@@ -51,6 +51,11 @@ Never add an ask to a checkout you do not own.
 A gate tripping on more than a few percent of what it reaches is a tax on every
 edit it touches. `onsetter list <path>` does the same for a single file and
 names the gate that turned it away.
+
+An `evokes:` ask has a fifth step: `onsetter warm` before it will ever fire.
+Unlike every other header, it needs a local cache built ahead of time — a
+phrase added since the last `warm` silently never fires, so re-run it after
+drafting or editing one.
 
 ## What replay cannot tell you
 
