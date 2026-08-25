@@ -72,13 +72,29 @@ const endpoint = "http://localhost:11434/api/embeddings"
 
 // EmbedDocument and EmbedQuery are the two entry points anything comparing an
 // edit against an evokes: phrase should use — never bare Embed. nomic-embed-text
-// is trained on asymmetric retrieval with a task prefix on each side, and
-// skipping it is not a stylistic omission: measured directly, a true
-// paraphrase with no shared vocabulary scored 0.486 unprefixed, indistinguishable
-// from noise, and 0.577 prefixed, a real gap above an unrelated case's 0.372.
-// The edit's content is the thing being searched (the document); an
-// evokes: phrase is what searches it (the query) — that asymmetry is why
-// this is two functions and not one with a bool.
+// is trained on asymmetric retrieval with a task prefix on each side, and on
+// evokes:'s own short-phrase case, skipping it was not a stylistic omission:
+// measured directly, a true paraphrase with no shared vocabulary scored
+// 0.486 unprefixed, indistinguishable from noise, and 0.577 prefixed, a real
+// gap above an unrelated case's 0.372. The edit's content is the thing being
+// searched (the document); an evokes: phrase is what searches it (the
+// query) — that asymmetry is why this is two functions and not one with a
+// bool.
+//
+// This does NOT generalize the way it looks like it should. lexicon tested
+// the same prefix against its own held-out calibration corpus (32 positive,
+// 7 negative, the set that sets its live threshold) and got the opposite
+// result: prefixing made separation AND recall worse, not better. Their read,
+// and it holds up: nomic's asymmetric prefix is trained on literal
+// document/query retrieval, which is what a short evokes: phrase is close
+// to — but lexicon's atoms are deliberately abstracted away from a query's
+// surface wording (an atom about the decorator pattern is supposed to share
+// little vocabulary with "add logging around an HTTP handler"), a different
+// regime the prefix does not transfer to. The finding below is real for
+// evokes:'s own case, measured on one machine against a handful of
+// hand-tested pairs — not a general claim about the model, and worth
+// re-checking as the evokes: corpus this runs against actually grows past
+// that handful.
 func EmbedDocument(text string, budget time.Duration) ([]float32, error) {
 	return Embed("search_document: "+text, DefaultModel, budget)
 }
