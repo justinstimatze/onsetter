@@ -86,12 +86,23 @@ func ParseSource(src string) ([]*ask.Ask, error) {
 // scopeOf returns the directory a file's `in:` globs are relative to: the
 // project directory, which for `.claude/CLAUDE.md` is one level up. Empty
 // means "the file's own directory".
+//
+// $HOME/.claude/CLAUDE.md collides with that rule by directory-name
+// coincidence — it also sits in a directory named .claude — but there is no
+// project one level above $HOME for its globs to be relative to; treating
+// $HOME as that project root means a glob like `in: feedback_*.md` resolves
+// against $HOME and never reaches anything under $HOME/.claude/projects/.
+// The global file's own directory is the only sensible scope, so it is
+// excluded from the parent-scoping rule.
 func scopeOf(src string) string {
 	dir := filepath.Dir(src)
-	if filepath.Base(dir) == ".claude" {
-		return filepath.Dir(dir)
+	if filepath.Base(dir) != ".claude" {
+		return ""
 	}
-	return ""
+	if home, err := os.UserHomeDir(); err == nil && dir == filepath.Join(home, ".claude") {
+		return ""
+	}
+	return filepath.Dir(dir)
 }
 
 // Sources lists every CLAUDE.md under root that contains at least one ask, or

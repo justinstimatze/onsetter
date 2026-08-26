@@ -36,7 +36,10 @@ is what lets `in:` stay short, and it means the ask moves when the content
 moves.
 
 One exception: asks in `<root>/.claude/CLAUDE.md` scope to `<root>`, because
-Claude Code loads that file as the project's own.
+Claude Code loads that file as the project's own. That exception needs a real
+project root: an ask in the global `~/.claude/CLAUDE.md` scopes to
+`~/.claude/` itself, not to `$HOME` — there's no project root above `$HOME`
+for its globs to be relative to.
 
 Never add an ask to a checkout you do not own.
 

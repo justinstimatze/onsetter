@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Fixed: an ask in the global `~/.claude/CLAUDE.md` scoped its globs to
+  `$HOME` instead of `~/.claude/`, because `scopeOf` treated any `CLAUDE.md`
+  sitting in a directory named `.claude` as the project-local
+  `<root>/.claude/CLAUDE.md` case. `$HOME` is not a project root, so
+  `in: feedback_*.md` there silently never matched a real memory file under
+  `~/.claude/projects/**/memory/`. Caught installing the first-ever ask
+  directly in the global file: it parsed, linted, and would never have fired.
+  `scopeOf` now excludes `$HOME/.claude` from the parent-scoping rule.
 - `internal/ask` is now `ask` — exported so a second module can call the same
   `Match` logic against its own tool calls, not just onsetter's own
   `Write`/`Edit` hook. First consumer in mind is winze-agent's

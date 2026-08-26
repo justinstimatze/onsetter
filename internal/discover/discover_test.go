@@ -77,6 +77,45 @@ func TestSourcesScopesDotClaudeLikeAsksDoes(t *testing.T) {
 	}
 }
 
+// $HOME/.claude/CLAUDE.md collides with the project-local .claude/CLAUDE.md
+// rule by directory-name coincidence — scoping it to $HOME the same way meant
+// `in: feedback_*.md` never reached anything under
+// $HOME/.claude/projects/**/memory/, confirmed live against the real global
+// file before this was fixed.
+func TestScopeOfGlobalClaudeMdScopesToItself(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	claudeDir := filepath.Join(home, ".claude")
+	fence := "```"
+	write(t, filepath.Join(claudeDir, "CLAUDE.md"), fence+"ask\nin: projects/**/memory/feedback_*.md\non: mint\n\nAsk.\n"+fence+"\n")
+
+	asks, err := ParseSource(filepath.Join(claudeDir, "CLAUDE.md"))
+	if err != nil || len(asks) != 1 {
+		t.Fatalf("parse: %d ask(s), %v", len(asks), err)
+	}
+	if got := asks[0].Dir; got != claudeDir {
+		t.Errorf("globs scoped to %q, want the global file's own directory %q", got, claudeDir)
+	}
+}
+
+// The rule this collides with still has to work: a real project root, not
+// $HOME, one level above its .claude/CLAUDE.md.
+func TestScopeOfProjectDotClaudeStillScopesToParent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	root := filepath.Join(home, "some-project")
+	fence := "```"
+	write(t, filepath.Join(root, ".claude", "CLAUDE.md"), fence+"ask\nin: internal/**/*.go\n\nAsk.\n"+fence+"\n")
+
+	asks, err := ParseSource(filepath.Join(root, ".claude", "CLAUDE.md"))
+	if err != nil || len(asks) != 1 {
+		t.Fatalf("parse: %d ask(s), %v", len(asks), err)
+	}
+	if got := asks[0].Dir; got != root {
+		t.Errorf("globs scoped to %q, want the project root %q", got, root)
+	}
+}
+
 // The headerless block is the format's sharpest edge: written the obvious way
 // it does not parse, and the error has to say why rather than complain that a
 // sentence is not `key: value`.

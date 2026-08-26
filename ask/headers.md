@@ -48,6 +48,14 @@ own, and scoping its globs to `.claude/` would make every one of them match
 nothing while the file looked wired. So `in: internal/**/*.go` there means what
 it looks like it means.
 
+That exception is scoped to a real project root, not to `$HOME/.claude/`. An
+ask in the global `~/.claude/CLAUDE.md` scopes to `~/.claude/` itself — the
+same directory-name collision doesn't apply, because `$HOME` isn't a project
+root for anything to be relative to. `in: projects/**/memory/feedback_*.md`
+there means `~/.claude/projects/**/memory/feedback_*.md`; without the fix,
+`in: feedback_*.md` alone would resolve against `$HOME` and never reach a real
+memory file.
+
 
 ## The eleven headers
 
