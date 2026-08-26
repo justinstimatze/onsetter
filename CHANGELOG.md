@@ -1,7 +1,26 @@
 # Changelog
 
-## Unreleased
+## v0.5.0 — 2026-08-26
 
+- New header: `revisit: true`. Every content-gated ask fires once per
+  distinct string it quotes back, for the life of the session — editing the
+  same file five more times without touching that string stays silent, which
+  is correct for a fixed reminder and wrong for one still sitting there
+  unresolved. `revisit: true` widens the fired-set key from the quoted
+  substring alone to the substring plus the whole edit that produced it
+  (`internal/session.KeyRevisit`), so a later, different edit that
+  reintroduces the same literal text asks again instead of reading as
+  already-answered. Not a gate — it never appears in a `replay` funnel, and
+  pairing it with an ask that gates on nothing does nothing at all.
+  Prompted by reading treadiehq/codecut's `stateFingerprint` mechanism, which
+  solves the analogous problem for its own verification-evidence rule by
+  keying a passing test's evidence to the diff it actually ran against. The
+  translation here is narrower: onsetter never sees a Bash call or a test
+  result, only the Write/Edit it already watches, so this fingerprints the
+  edit rather than a verification event.
+  Every ask's `ID()` now folds in `Revisit`, so this release re-arms every
+  deployed ask once per in-flight session, the same one-time cost v0.3.0's
+  key-format change paid.
 - Fixed: an ask in the global `~/.claude/CLAUDE.md` scoped its globs to
   `$HOME` instead of `~/.claude/`, because `scopeOf` treated any `CLAUDE.md`
   sitting in a directory named `.claude` as the project-local

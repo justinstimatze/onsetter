@@ -591,13 +591,69 @@ func TestIDChangesWithEvokes(t *testing.T) {
 	}
 }
 
+func TestRevisitParsesAndDefaultsFalse(t *testing.T) {
+	r := parseOne(t, "```ask\nwhen: TODO\nrevisit: true\n\nAsk.\n```\n")
+	if !r.Revisit {
+		t.Error("revisit: true did not set Revisit")
+	}
+	plain := parseOne(t, "```ask\nwhen: TODO\n\nAsk.\n```\n")
+	if plain.Revisit {
+		t.Error("an ask with no revisit: header should default to false")
+	}
+}
+
+// Case-insensitive the same way on: is: `on: MINT` already works, so
+// `revisit: True` should too rather than rejecting on a technicality.
+func TestRevisitAcceptsAnyCaseOfTrue(t *testing.T) {
+	r := parseOne(t, "```ask\nwhen: TODO\nrevisit: True\n\nAsk.\n```\n")
+	if !r.Revisit {
+		t.Error("revisit: True (capitalized) did not set Revisit")
+	}
+}
+
+// "true" is the only accepted spelling — there is no antonym, so a stray
+// "false" would silently do nothing rather than the no-op it looks like.
+func TestRevisitRejectsAnyOtherValue(t *testing.T) {
+	for _, v := range []string{"false", "yes", "1"} {
+		_, err := Parse(strings.NewReader("```ask\nrevisit: "+v+"\n\nAsk.\n```\n"), "/repo/CLAUDE.md")
+		if err == nil {
+			t.Errorf("revisit: %s parsed cleanly, want an error", v)
+		}
+	}
+}
+
+// revisit: never gates — Match fires or rejects exactly the same with or
+// without it, because the hook dispatcher, not Match, is what reads it.
+func TestRevisitNeverAffectsMatch(t *testing.T) {
+	e := Edit{New: "TODO: fix this"}
+	plain := parseOne(t, "```ask\nwhen: TODO\n\nAsk.\n```\n")
+	revisiting := parseOne(t, "```ask\nwhen: TODO\nrevisit: true\n\nAsk.\n```\n")
+	pm, pok := match(plain, e)
+	rm, rok := match(revisiting, e)
+	if pok != rok || pm != rm {
+		t.Errorf("revisit: true changed Match's outcome: (%q, %v) vs (%q, %v)", pm, pok, rm, rok)
+	}
+}
+
+// Identity has to move with revisit: too, the same as every other header.
+func TestIDChangesWithRevisit(t *testing.T) {
+	a := parseOne(t, "```ask\nwhen: TODO\n\nAsk.\n```\n")
+	b := parseOne(t, "```ask\nwhen: TODO\nrevisit: true\n\nAsk.\n```\n")
+	if a.ID() == b.ID() {
+		t.Error("adding revisit: true did not change the ask's ID")
+	}
+}
+
 // Every header the parser accepts is in Headers, so the parse error, the
 // reference and replay's funnel cannot fall out of step with the switch.
 func TestHeadersListsEveryHeaderTheParserAccepts(t *testing.T) {
 	for _, h := range Headers {
 		v := "x"
-		if h == "on" {
+		switch h {
+		case "on":
 			v = "mint"
+		case "revisit":
+			v = "true"
 		}
 		if _, err := Parse(strings.NewReader("```ask\n"+h+": "+v+"\n\nAsk.\n```\n"), "/repo/CLAUDE.md"); err != nil {
 			t.Errorf("Headers lists %q but the parser rejects it: %v", h, err)

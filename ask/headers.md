@@ -57,10 +57,11 @@ there means `~/.claude/projects/**/memory/feedback_*.md`; without the fix,
 memory file.
 
 
-## The eleven headers
+## The twelve headers
 
 Listed in the order `Match` applies them, which is the order `onsetter replay`
-reports a funnel in.
+reports a funnel in — except the last. `revisit` is never a reason a pending
+edit gets turned away; it never appears in that funnel at all.
 
 | Header      | Matches                                   | Repeat means |
 |-------------|-------------------------------------------|--------------|
@@ -75,6 +76,7 @@ reports a funnel in.
 | `removed`   | the lines this edit deletes               | AND          |
 | `when`      | the incoming text                         | AND          |
 | `evokes`    | the incoming text, fuzzily — not a regex  | OR           |
+| `revisit`   | nothing — widens the session key instead  | last wins    |
 
 Globs are [doublestar](https://github.com/bmatcuk/doublestar) and resolve
 against the directory of the `CLAUDE.md` the ask lives in — never the repo root
@@ -256,6 +258,25 @@ of reasoning in comments, commit messages, or prose files; the regex headers
 above it already own code-shaped triggers precisely, and that division is
 not a style preference — it is where this header's signal actually lives.
 
+### `revisit:` — do not let a stale dismissal cover a new state
+
+```
+when: TODO
+revisit: true
+```
+
+Every other content-gated ask keys its once-per-session firing on the text it
+quoted back, described in full under **Lifetime** below. `revisit: true`
+widens that key to the quote plus the whole edit that produced it, so a later
+edit that reintroduces the identical string is a new question rather than one
+already answered — see **Lifetime** for what this changes and what it costs.
+
+Not a gate: it cannot make an ask fire or turn one away, so it never appears
+in a `replay` funnel. And it needs a quote to widen: pairing it with an ask
+that has nothing to quote back does nothing at all. That is `added:`,
+`removed:`, `when:`, or `evokes:` — not `has:`, which gates on the file as it
+stands but, like a path-only ask, never contributes to what gets quoted.
+
 
 ## Choosing a gate
 
@@ -321,15 +342,40 @@ text it quoted back.
 That means the two kinds of block get opposite treatment without either one
 declaring itself. A block with no content gate quotes nothing, so it fires once
 per session however many files it governs — it is a reminder, and repeating it
-is noise. A block with a `when:`, `has:`, `added:` or `removed:` keys on what
-it matched, so a new match asks again and a repeat of the same match stays
-quiet. Its ceiling is set by its own pattern: an ask can fire at most once per
+is noise. A block with a `when:`, `added:`, `removed:` or `evokes:` keys on
+what it matched, so a new match asks again and a repeat of the same match
+stays quiet. `has:` gates on the file as it stands but never contributes a
+quote, so a `has:`-only block is a reminder too. Its ceiling is set by its own
+pattern: an ask can fire at most once per
 distinct string its regex can match, so twenty alternatives means at most
 twenty questions.
 
 If a content-gated ask only ever fires once, its pattern is matching a property
 of the file type rather than a signal that something changed. That is worth
 knowing — see the funnel note under **Before you wire it**.
+
+That default is right for most asks: the quote is the question, and a repeat
+of the same quote has already been answered. It is wrong for one still true —
+an unresolved TODO an ask flagged once, still sitting there five edits later
+to the same file, reads as already-answered because the string never changed,
+even though the agent has had five more chances to deal with it and has not.
+`revisit: true` says this ask's question is not "have you seen this exact
+string" but "is this still here", and widens its key from the quote alone to
+the quote plus the edit that produced it — so touching the file again with
+the same violation still present asks again, and only a genuine no-op re-edit
+(byte-identical to one already asked about) stays quiet.
+
+The idea is [treadiehq/codecut](https://github.com/treadiehq/codecut)'s: its
+`verification-evidence` rule keys a passing test to the diff fingerprint it
+actually ran against, so a stale pass from before the last edit does not
+count. Onsetter never sees a test run — only the `Write`/`Edit` it already
+watches — so this is that idea's narrower shadow: fingerprinting the edit
+rather than a verification event, because an edit is the only state onsetter
+has.
+
+Turning it on changes every deployed ask's identity, `revisit: true` or not:
+`ID()` now folds the header in, so this release re-arms every ask once per
+in-flight session, the one-time cost the v0.3.0 key-format change also paid.
 
 Identity is a hash of the gate and the body, not the line number, so inserting
 a paragraph above an ask changes nothing and editing its prose re-arms it. To

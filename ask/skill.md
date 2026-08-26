@@ -1,6 +1,6 @@
 ---
 name: onsetter
-description: How to write, measure and wire an onsetter ask — prose in a fenced ask block inside an ordinary CLAUDE.md, injected in front of the Write or Edit that trips its gate. Read this before adding or changing an ask block, before picking a header (requires, in, not-in, on, not, has, untouched, added, removed, when, evokes), and whenever a CLAUDE.md in the tree already contains ask fences. Covers where the block goes, the replay-before-wiring rule, the two things replay cannot measure, and why a wide gate now costs more than it used to.
+description: How to write, measure and wire an onsetter ask — prose in a fenced ask block inside an ordinary CLAUDE.md, injected in front of the Write or Edit that trips its gate. Read this before adding or changing an ask block, before picking a header (requires, in, not-in, on, not, has, untouched, added, removed, when, evokes, revisit), and whenever a CLAUDE.md in the tree already contains ask fences. Covers where the block goes, the replay-before-wiring rule, the two things replay cannot measure, and why a wide gate now costs more than it used to.
 ---
 
 # Writing an onsetter ask
@@ -20,7 +20,7 @@ side needs no discovery; the authoring side does.
 onsetter headers
 ```
 
-All eleven headers with their haystacks, the gotchas, and a
+All twelve headers with their haystacks, the gotchas, and a
 what-you-want-to-catch table. It ships inside the binary, so it always
 describes the version actually installed. Read it rather than working from
 memory of this file — the trap that keeps catching people is `not:`, which is a
@@ -92,8 +92,10 @@ text it quoted back.
 So the two kinds of block get opposite treatment without either declaring
 itself. No content gate means nothing to quote: it fires once per session
 however many files it governs — a reminder, and repeating it is noise. A
-`when:`, `has:`, `added:` or `removed:` keys on what it matched, so a new match
-asks again and a repeat of the same match stays quiet.
+`when:`, `added:`, `removed:` or `evokes:` keys on what it matched, so a new
+match asks again and a repeat of the same match stays quiet. `has:` gates on
+the file as it stands but never contributes a quote, so a `has:`-only block is
+a reminder too.
 
 The consequence when drafting: gate width is expensive. A pattern matching most
 of a corpus used to cost one injection per session and now costs one per
@@ -102,6 +104,11 @@ of twenty questions.
 
 If a content-gated ask only ever fires once, its pattern is matching a property
 of the file type rather than a signal that anything changed.
+
+`revisit: true` opts an ask out of that default: its key widens from the
+quote alone to the quote plus the edit that produced it, so a still-unresolved
+match asks again the next time the file is touched instead of reading as
+already-answered. See `onsetter headers` for the mechanism and its cost.
 
 ## Writing the prose
 

@@ -109,6 +109,49 @@ func TestHookEndToEnd(t *testing.T) {
 	}
 }
 
+// revisit: true is the inverted case of TestHookEndToEnd's "same quote,
+// silence": the same regex match ("you realize") appears in two different
+// edits, and this ask should ask about both, because the file changing again
+// with the same issue still present is itself the thing worth a second look.
+func TestRevisitReArmsWhenTheEditDiffersButTheQuoteDoesNot(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	cache := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"),
+		"```ask\nwhen: you (nod|realize)\nrevisit: true\n\nStill narrator overreach.\n```\n")
+	target := filepath.Join(repo, "a.md")
+	write(t, target, "old text")
+
+	sid := "sess-revisit"
+	first := run(t, bin, cache, map[string]any{
+		"session_id": sid, "tool_name": "Edit",
+		"tool_input": map[string]any{"file_path": target, "new_string": "and you realize she is lying"},
+	})
+	if !strings.Contains(first, "Still narrator overreach.") {
+		t.Fatalf("did not fire on the first edit:\n%s", first)
+	}
+
+	second := run(t, bin, cache, map[string]any{
+		"session_id": sid, "tool_name": "Edit",
+		"tool_input": map[string]any{"file_path": target, "new_string": "and you realize she is stalling"},
+	})
+	if !strings.Contains(second, "Still narrator overreach.") {
+		t.Errorf("revisit: true stayed quiet on a different edit quoting the same text:\n%s", second)
+	}
+
+	// A genuine repeat — the identical edit, byte for byte — is still the
+	// same question asked the same way, so it stays quiet even with
+	// revisit: true. Only the file changing again is what re-arms it.
+	third := run(t, bin, cache, map[string]any{
+		"session_id": sid, "tool_name": "Edit",
+		"tool_input": map[string]any{"file_path": target, "new_string": "and you realize she is stalling"},
+	})
+	if third != "" {
+		t.Errorf("an exact repeat of the same edit fired again:\n%s", third)
+	}
+}
+
 // A path-only ask is a reminder: the reader needs to know a standard exists,
 // and once they know it, repeating it is noise. It quotes nothing, so there is
 // nothing to key on but the ask itself, and it fires once per session however

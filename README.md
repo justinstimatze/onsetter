@@ -540,7 +540,7 @@ $ onsetter list corpus/locations/quamash_1962/creek_bridge.json
 ```
 
 It also answers the harder question, which is why an ask you just wrote is
-*not* firing. There are eleven headers, and the one that rejected gets marked:
+*not* firing. There are a dozen headers, and the one that rejected gets marked:
 
 ```
 $ onsetter list corpus/chars/quamash_1962/art_callahan.json

@@ -119,6 +119,9 @@ func cmdHook() error {
 			continue
 		}
 		key := session.Key(r.ID(), res.Matched)
+		if r.Revisit {
+			key = session.KeyRevisit(r.ID(), res.Matched, content)
+		}
 		if store.Fired(key) {
 			continue
 		}

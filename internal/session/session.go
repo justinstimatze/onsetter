@@ -3,9 +3,10 @@
 // A question you have already answered is noise the second time, and noise is
 // how you teach someone to scroll past the block without reading it. What
 // counts as the same question is decided by Key: the ask, plus the text it
-// quoted back. There is no decay model here on purpose, because nothing
-// measurable distinguishes an ask that changed an edit from one that was
-// skimmed and ignored.
+// quoted back — or by KeyRevisit, for an ask that says the file changing
+// again is itself worth asking about, quote or no. There is no decay model
+// here on purpose, because nothing measurable distinguishes an ask that
+// changed an edit from one that was skimmed and ignored.
 package session
 
 import (
@@ -95,7 +96,27 @@ func Key(id, matched string) string {
 	if matched == "" {
 		return id
 	}
-	sum := sha256.Sum256([]byte(matched))
+	return keyed(id, matched)
+}
+
+// KeyRevisit is Key for an ask carrying `revisit: true`. The quoted match
+// alone stays the identity of a firing: a later edit that reintroduces the
+// exact same literal string reads as the same, already-answered question, no
+// matter how much of the file has changed around it since. `revisit: true`
+// says that assumption is wrong for this ask — the file being edited again at
+// all, with the flagged text still in it, is itself worth a second look, so
+// the key widens to the match plus the edit that produced it. Two edits
+// quoting identical text are still two different questions once the second
+// one is a different edit.
+func KeyRevisit(id, matched, edit string) string {
+	if matched == "" {
+		return id
+	}
+	return keyed(id, matched+"\x00"+edit)
+}
+
+func keyed(id, material string) string {
+	sum := sha256.Sum256([]byte(material))
 	return id + ":" + hex.EncodeToString(sum[:])[:8]
 }
 

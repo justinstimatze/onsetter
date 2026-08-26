@@ -36,6 +36,41 @@ func TestKeySeparatesAsksSharingAQuote(t *testing.T) {
 	}
 }
 
+// revisit: true has nothing to widen without a quote, so it degrades to the
+// same bare-id reminder behavior as Key.
+func TestKeyRevisitWithoutAMatchIsTheAskItself(t *testing.T) {
+	if got := KeyRevisit("abc123", "", "TODO: fix this"); got != "abc123" {
+		t.Errorf("got %q, want the bare id", got)
+	}
+}
+
+// The whole point: two edits quoting identical text are two different
+// questions once the edit around the quote differs.
+func TestKeyRevisitVariesWithTheEditNotJustTheQuote(t *testing.T) {
+	a := KeyRevisit("abc123", "TODO", "TODO: fix this")
+	b := KeyRevisit("abc123", "TODO", "TODO: fix that")
+	if a == b {
+		t.Error("the same quote in two different edits produced the same key")
+	}
+}
+
+// The same edit asked about twice stays the same question.
+func TestKeyRevisitIsStableForTheSameEdit(t *testing.T) {
+	a := KeyRevisit("abc123", "TODO", "TODO: fix this")
+	b := KeyRevisit("abc123", "TODO", "TODO: fix this")
+	if a != b {
+		t.Error("the same quote and edit produced two different keys")
+	}
+}
+
+// Opting in has to actually change the key an ask is stored under, or
+// revisit: true would parse without doing anything.
+func TestKeyRevisitDiffersFromKeyForTheSameQuote(t *testing.T) {
+	if Key("abc123", "TODO") == KeyRevisit("abc123", "TODO", "TODO: fix this") {
+		t.Error("Key and KeyRevisit produced the same key for the same quote")
+	}
+}
+
 // The store is one key per line, and a match can be up to 80 bytes of whatever
 // the file contained — including newlines, which clip does not strip. Hashing
 // is what keeps one firing from writing two lines and poisoning the set.

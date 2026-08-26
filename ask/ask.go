@@ -67,6 +67,7 @@ type Ask struct {
 	On        Mode
 	Requires  []string // binary names that must resolve on $PATH
 	Evokes    []string // fuzzy trigger phrases; fires on any one, not all
+	Revisit   bool     // widen the session key from the quote to the whole edit
 	Body      string
 }
 
@@ -97,10 +98,10 @@ type Edit struct {
 // paragraph above an ask would make every ask below it fire again.
 func (r *Ask) ID() string {
 	h := sha256.New()
-	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s",
+	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%t",
 		r.In, strings.Join(r.NotIn, "\x01"), reSrc(r.When), reSrc(r.Added),
 		reSrc(r.Removed)+"\x02"+reSrc(r.Has)+"\x03"+strings.Join(r.Untouched, "\x01"),
-		reSrc(r.Not), r.On, strings.Join(r.Evokes, "\x01"), r.Body)
+		reSrc(r.Not), r.On, strings.Join(r.Evokes, "\x01"), r.Body, r.Revisit)
 	return hex.EncodeToString(h.Sum(nil))[:12]
 }
 
@@ -150,7 +151,12 @@ func Skill() string { return skill }
 // Headers are the header keys a block may carry, in the order Match applies
 // them. One list, so the parse error, the reference in `onsetter headers` and
 // the funnel in `onsetter replay` cannot disagree about what exists.
-var Headers = []string{"requires", "in", "not-in", "on", "not", "has", "untouched", "added", "removed", "when", "evokes"}
+//
+// `revisit` is last and out of step with that ordering on purpose: Match
+// never looks at it. It is metadata the hook dispatcher reads afterward, to
+// decide what the session key for a firing includes — not a gate a pending
+// edit can pass or fail.
+var Headers = []string{"requires", "in", "not-in", "on", "not", "has", "untouched", "added", "removed", "when", "evokes", "revisit"}
 
 // Result is the outcome of matching one ask against one edit. When it fired,
 // Matched is the text the content gate hit, so the injection can quote it
@@ -158,7 +164,7 @@ var Headers = []string{"requires", "in", "not-in", "on", "not", "has", "untouche
 // dismiss, and a question about nothing in particular costs an investigation.
 //
 // When it did not fire, Gate names the header that turned it away. There are
-// eleven headers now, and "would not fire" said nothing about which one, so
+// a dozen headers now, and "would not fire" said nothing about which one, so
 // debugging a draft ask meant deleting headers one at a time and rebuilding.
 type Result struct {
 	OK      bool
@@ -531,6 +537,11 @@ func parseBlock(lines []string, source, dir string, start int) (*Ask, error) {
 			r.Requires = append(r.Requires, v) // repeated requires: is an AND
 		case "evokes":
 			r.Evokes = append(r.Evokes, v) // repeated evokes: is an OR; not a regex
+		case "revisit":
+			if strings.ToLower(v) != "true" {
+				return nil, fmt.Errorf("revisit: %q is not \"true\" (omit the header for the default)", v)
+			}
+			r.Revisit = true
 		default:
 			return nil, fmt.Errorf("unknown header %q (want %s)%s", k, strings.Join(Headers, ", "), hint)
 		}
