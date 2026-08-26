@@ -75,8 +75,7 @@ func cmdInstall(args []string) error {
 				survivors = append(survivors, h)
 				continue
 			}
-			if cmd, _ := hm["command"].(string); strings.HasSuffix(strings.TrimSpace(cmd), " hook") &&
-				strings.Contains(cmd, "onsetter") {
+			if cmd, _ := hm["command"].(string); isOnsetterHookCommand(cmd) {
 				continue
 			}
 			survivors = append(survivors, h)
@@ -119,6 +118,13 @@ func cmdInstall(args []string) error {
 	fmt.Printf("  Hook settings are read per session — a session already running\n")
 	fmt.Printf("  will not pick this up.\n")
 	return nil
+}
+
+// isOnsetterHookCommand reports whether cmd is an onsetter PreToolUse entry.
+// Shared with cmdStatus so wiring "already there" and wiring "reported
+// present" cannot drift apart.
+func isOnsetterHookCommand(cmd string) bool {
+	return strings.HasSuffix(strings.TrimSpace(cmd), " hook") && strings.Contains(cmd, "onsetter")
 }
 
 // writeSkill installs the authoring guide as a Claude Code skill next to the

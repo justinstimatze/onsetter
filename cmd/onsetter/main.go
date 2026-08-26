@@ -63,6 +63,9 @@ const usage = `onsetter — asks that arrive at the edit, not at session start.
   onsetter replay <glob>...  Fire rate of every ask against a corpus. Run this
                              before wiring an ask: every first draft over-fires.
   onsetter lint [dir]        Parse every ask under dir.
+  onsetter status [dir]      Whether onsetter is actually working right now:
+                             hook wired, asks parsing clean, evokes: cache
+                             warm, requires: binaries present. Read-only.
   onsetter warm [dir]        Embed every evokes: phrase under dir into the
                              local cache. Run after adding or editing one —
                              hook never fills a cache miss itself.
@@ -130,6 +133,8 @@ func main() {
 		err = cmdReplay(args[1:])
 	case "lint":
 		err = cmdLint(args[1:])
+	case "status":
+		err = cmdStatus(args[1:])
 	case "warm":
 		err = cmdWarm(args[1:])
 	case "calib":

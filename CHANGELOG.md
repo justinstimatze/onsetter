@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.6.0 — 2026-08-26
+
+- New command: `onsetter status [dir]`. Read-only, four sections: is the
+  `PreToolUse` hook actually registered in the settings file `install` would
+  have written to, does every ask under `dir` still parse, is every
+  `evokes:` phrase warmed (`Cache.Warm`, a pure lookup — no Ollama call, so
+  this runs even when nothing is serving one locally), and does every
+  `requires:` binary still resolve on `$PATH`. Each ask can go silently dead
+  in a different way — a hook that stopped being registered, a block that
+  no longer parses, a phrase added since the last `warm`, a tool that got
+  uninstalled — and none of them announce themselves; the file that would
+  have tripped the ask just never gets a question. Exits non-zero on any
+  problem, the same convention `lint` already uses.
+  Checks only the default settings path `install` resolves to (the
+  `CLAUDE_SETTINGS` env var, else `~/.claude/settings.local.json`) — not
+  every location Claude Code merges settings from. A custom install target
+  or a project-local `settings.json` reads as "not found" here even when
+  Claude Code is loading it fine. Scanning every location was the other
+  option; not building it because nothing today is known to install
+  anywhere but the default path, and it would have meant resolving a
+  project root and reading up to four files for a case with no known user.
+  If that changes, this is the first thing to widen.
+
 ## v0.5.0 — 2026-08-26
 
 - New header: `revisit: true`. Every content-gated ask fires once per

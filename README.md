@@ -517,6 +517,7 @@ onsetter install           wire ~/.claude/settings.local.json, write the skill
 onsetter list [path]       what governs this path, and what would fire now
 onsetter replay <glob>...  fire rate of every ask against a corpus
 onsetter lint [dir]        parse every block; refuse the ones that say nothing
+onsetter status [dir]      is it actually wired, parsing, warm, and satisfied
 onsetter warm [dir]        embed every evokes: phrase under dir into the cache
 onsetter calib <ask> <fires-glob> <not-glob>
                            measure one evokes: ask against labeled examples
