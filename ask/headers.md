@@ -57,11 +57,12 @@ there means `~/.claude/projects/**/memory/feedback_*.md`; without the fix,
 memory file.
 
 
-## The twelve headers
+## The fourteen headers
 
 Listed in the order `Match` applies them, which is the order `onsetter replay`
-reports a funnel in — except the last. `revisit` is never a reason a pending
-edit gets turned away; it never appears in that funnel at all.
+reports a funnel in — except the last three. `revisit`, `name` and `cues` are
+never a reason a pending edit gets turned away; none of the three appears in
+that funnel at all.
 
 | Header      | Matches                                   | Repeat means |
 |-------------|-------------------------------------------|--------------|
@@ -77,6 +78,8 @@ edit gets turned away; it never appears in that funnel at all.
 | `when`      | the incoming text                         | AND          |
 | `evokes`    | the incoming text, fuzzily — not a regex  | OR           |
 | `revisit`   | nothing — widens the session key instead  | last wins    |
+| `name`      | nothing — gives another ask something to cue | last wins |
+| `cues`      | nothing — fires a second ask by name      | cue each     |
 
 Globs are [doublestar](https://github.com/bmatcuk/doublestar) and resolve
 against the directory of the `CLAUDE.md` the ask lives in — never the repo root
@@ -278,6 +281,65 @@ that has nothing to quote back does nothing at all. That is `added:`,
 stands but, like a path-only ask, never contributes to what gets quoted.
 
 
+### `name:` — a handle other asks can cue
+
+```
+name: check-token-scope
+```
+
+Gives this ask a stable, human-chosen slug another ask's `cues:` can point
+at. Not a gate — Match never reads it, and `onsetter replay` never reports
+a rate for it.
+
+Not `ID()`. `ID()` is a content hash that changes every time this ask's
+prose or gates are edited, and is never printed anywhere — `onsetter list`
+and `onsetter replay` show `Where()`, not `ID()`. Citing it directly from
+another ask would silently break on the next wording tweak. `name:` is the
+address that survives that.
+
+Must be unique across the whole tree; `onsetter lint` and `onsetter status`
+both fail loudly on a collision, because a silent second `name:` means
+whichever cue meant the first ask now reaches the second one instead.
+
+### `cues:` — fire a second ask by name
+
+```
+when: fetch\(.*credentials
+cues: check-token-scope
+```
+
+When this ask fires, it also injects the prose of the ask (or asks —
+repeat the header to cue more than one) named by `cues:`, in the same
+block, **without checking that ask's own gate at all**. That is the entire
+point: it fires because it was cued, not because its own `in:`/`when:`/etc.
+also matched this edit. Every other gate on the cued ask is bypassed except
+`requires:`, which still has to resolve — a cued ask naming an uninstalled
+tool still shouldn't inject.
+
+A cued firing never quotes anything, even if the target ask has its own
+`when:` or similar — there was never a match to quote. That makes a cued
+firing behave like any other no-content-gate ask for session purposes: it
+fires once per session, full stop, and `revisit:` on the target does
+nothing for a firing reached this way.
+
+**A cue can only ever reach an ask that this file's own `CLAUDE.md` chain
+could already see.** Concretely: the target's `name:` must be declared in a
+`CLAUDE.md` that is an ancestor of (or the same file as) the citing ask's
+own `CLAUDE.md` — never in one nested below it, unless the citing ask's own
+`in:` is scoped to that same subtree. `onsetter lint` flags the common
+mistake shape (a target declared below the citer) as a heuristic, and
+`onsetter replay` will show zero cued fires in a corpus where the author
+expected otherwise if the scope is wrong in a way the heuristic missed.
+
+Loop-safe by construction: a cascade visits each ask at most once per edit,
+so a cycle (A cues B, B cues A) or a diamond (A and B both cue C) both fire
+every ask exactly once rather than looping or double-injecting.
+
+The idiom for prose that should only ever fire by being cued, never on its
+own: `not-in: **`. `in:` defaults to matching everything, and a `not-in:
+**` unconditionally excludes every path, so the ask can never pass its own
+gate — only a `cues:` from elsewhere can ever reach it.
+
 ## Choosing a gate
 
 | You want to catch                          | Reach for                |
@@ -291,6 +353,7 @@ stands but, like a path-only ask, never contributes to what gets quoted.
 | anything at all under one directory         | `in:` alone (no content) |
 | an ask that only makes sense with a companion tool installed | `requires:` |
 | a topic or a shape of reasoning, not a fixed string | `evokes:`         |
+| one ask's prose should also pull in a second one    | `cues:` (with `name:` on the target) |
 
 If a gate would need lookahead, split it across two `when:` lines. If it would
 need to exclude a directory, that is `not-in:`, not `not:`.
@@ -376,6 +439,15 @@ has.
 Turning it on changes every deployed ask's identity, `revisit: true` or not:
 `ID()` now folds the header in, so this release re-arms every ask once per
 in-flight session, the one-time cost the v0.3.0 key-format change also paid.
+
+`cues:` paid that same one-time cost when it shipped, for the same reason:
+`ID()` folds the `cues:` list in (so a freshly wired cue gets a chance to
+walk a session where the citer already fired once), but leaves `name:` out
+of the hash entirely — renaming an ask to fix a collision, or just to make
+its cue wiring read better, should not re-arm every already-answered
+session instance of it. A cued firing's own key never carries `revisit:`
+either way: it never quotes anything, so there is nothing for `revisit:` to
+widen.
 
 Identity is a hash of the gate and the body, not the line number, so inserting
 a paragraph above an ask changes nothing and editing its prose re-arms it. To

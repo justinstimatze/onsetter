@@ -45,3 +45,9 @@ gate matched, capped at 80 characters, injected as advisory context. A
 choosing in front of the model at edit time — the same trust you already extend
 to that file by opening the repository in Claude Code. onsetter cannot block a
 tool call and never executes anything from a rule.
+
+A rule can also name a second rule via `cues:`, which injects that second
+rule's prose in the same block — with no substring at all, since a cued rule
+never checks its own content gate. Same threat category and the same cap:
+still only prose from a `CLAUDE.md` you already opened, never anything
+executed, just a second path by which that prose reaches the model.

@@ -14,12 +14,13 @@ import (
 )
 
 // cmdStatus answers one question: if a file were written right now that
-// should trip an ask, would anything actually happen. Four ways that can
+// should trip an ask, would anything actually happen. Five ways that can
 // silently be false — the hook not wired, a block that fails to parse, an
-// evokes: phrase never warmed, a requires: binary not on this machine — each
-// fail quietly on their own: a rejected write, a dead hook, a block nobody
-// notices was never checked. status is read-only, so running it changes
-// nothing it reports on.
+// evokes: phrase never warmed, a requires: binary not on this machine, a
+// cues: value that resolves to nothing (or to something out of scope) —
+// each fail quietly on their own: a rejected write, a dead hook, a block
+// nobody notices was never checked. status is read-only, so running it
+// changes nothing it reports on.
 func cmdStatus(args []string) error {
 	dir := "."
 	if len(args) > 0 {
@@ -50,6 +51,9 @@ func cmdStatus(args []string) error {
 
 	fmt.Println("\nrequires:")
 	bad += statusRequires(asks, dir)
+
+	fmt.Println("\ncues:")
+	bad += statusCues(asks, dir)
 
 	if bad > 0 {
 		return fmt.Errorf("%d problem(s)", bad)
@@ -215,4 +219,28 @@ func statusRequires(asks []*ask.Ask, dir string) int {
 		}
 	}
 	return missing
+}
+
+// statusCues is lint's own name:/cues: check, over the same asks
+// statusDiscovery already walked — same duplication-on-purpose as that
+// function staying in sync with lint's own walk: a cues: that lint would
+// reject should read as broken here too, before match time rather than
+// only ever discovered through a firing that silently never happens.
+func statusCues(asks []*ask.Ask, dir string) int {
+	problems := ask.ValidateCues(asks)
+	if len(problems) == 0 {
+		fmt.Println("  no problems")
+		return 0
+	}
+	for _, p := range problems {
+		switch p.Kind {
+		case "duplicate-name":
+			fmt.Printf("  DUPLICATE name: %q (%s)\n", p.Value, p.Ask.Where(dir))
+		case "dangling-cue":
+			fmt.Printf("  MISSING cues: %q (%s)\n", p.Value, p.Ask.Where(dir))
+		case "cue-out-of-scope":
+			fmt.Printf("  OUT-OF-SCOPE cues: %q (%s)\n", p.Value, p.Ask.Where(dir))
+		}
+	}
+	return len(problems)
 }

@@ -180,6 +180,41 @@ func TestStatusReportsWarmedEvokesPhrase(t *testing.T) {
 	}
 }
 
+func TestStatusReportsDanglingCue(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"), "```ask\ncues: nowhere-at-all\n\nAsk.\n```\n")
+	settings := filepath.Join(t.TempDir(), "settings.local.json")
+
+	out, err := runStatus(t, bin, repo, settings, t.TempDir(), "status", ".")
+	if err == nil {
+		t.Fatal("want a non-zero exit: cues: names no ask anywhere")
+	}
+	if !strings.Contains(out, `MISSING cues: "nowhere-at-all"`) {
+		t.Errorf("cues: section does not name the dangling value:\n%s", out)
+	}
+}
+
+func TestStatusExitsZeroWithAValidCue(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"), ""+
+		"```ask\nwhen: TODO\ncues: check-token-scope\n\nCiting question.\n```\n\n"+
+		"```ask\nname: check-token-scope\nnot-in: **\n\nCued question.\n```\n")
+	settings := filepath.Join(t.TempDir(), "settings.local.json")
+
+	if out, err := runStatus(t, bin, repo, settings, t.TempDir(), "install", settings); err != nil {
+		t.Fatalf("install: %v\n%s", out, err)
+	}
+
+	out, err := runStatus(t, bin, repo, settings, t.TempDir(), "status", ".")
+	if err != nil {
+		t.Fatalf("want exit 0 with a valid name:/cues: pair:\n%v\n%s", err, out)
+	}
+}
+
 func TestStatusExitsZeroWhenEverythingIsFine(t *testing.T) {
 	bin := buildBinary(t)
 	repo := t.TempDir()

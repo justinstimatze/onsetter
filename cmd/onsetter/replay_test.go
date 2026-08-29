@@ -79,3 +79,28 @@ func TestReplayFunnelsRequires(t *testing.T) {
 		t.Errorf("funnel does not name requires: as what turned the file away:\n%s", got)
 	}
 }
+
+// A cue-only ask (not-in: ** — never gate-matches by design) still has to
+// show a real rate, not 0%, or replay misreports exactly the ask this
+// feature exists to measure honestly.
+func TestReplayCountsCuedFires(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	mkdir(t, filepath.Join(repo, "corpus"))
+	write(t, filepath.Join(repo, "CLAUDE.md"), ""+
+		"```ask\nin: corpus/**\nwhen: aliases\ncues: check-token-scope\n\nCiting question.\n```\n\n"+
+		"```ask\nin: corpus/**\nname: check-token-scope\nnot-in: **\n\nCued question.\n```\n")
+	write(t, filepath.Join(repo, "corpus", "a.json"), `{"aliases": ["take"]}`)
+
+	got := replayIn(t, bin, repo, "corpus/a.json")
+	if strings.Count(got, "100.0%") != 2 {
+		t.Errorf("both the citer and the cued ask should read 100%%, not 0%%:\n%s", got)
+	}
+	if !strings.Contains(got, "were cued, not gate-matched") {
+		t.Errorf("the cued fire should be called out as cued, not gate-matched:\n%s", got)
+	}
+	if !strings.Contains(got, "(cued by") {
+		t.Errorf("the sample line should name the citer:\n%s", got)
+	}
+}

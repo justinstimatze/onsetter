@@ -384,3 +384,133 @@ func TestUntouchedIsNotSatisfiedByTheEditInHand(t *testing.T) {
 		t.Error("the edit in hand satisfied an untouched: gate about itself")
 	}
 }
+
+// A cued target's own gate — here in: nothing, an impossible glob — never
+// gets checked at all. It fires because it was named, with no matched text
+// of its own, cited back to the ask that cued it.
+func TestCueInjectsTheTargetAsksProseWithoutCheckingItsOwnGate(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	cache := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"), ""+
+		"```ask\nwhen: alpha\ncues: check-token-scope\n\nCiting question.\n```\n\n"+
+		"```ask\nname: check-token-scope\nin: nothing/**\n\nCued question.\n```\n")
+	target := filepath.Join(repo, "a.md")
+	write(t, target, "x")
+
+	got := run(t, bin, cache, map[string]any{
+		"session_id": "s", "tool_name": "Write",
+		"tool_input": map[string]any{"file_path": target, "content": "alpha"},
+	})
+	if !strings.Contains(got, "Citing question.") || !strings.Contains(got, "Cued question.") {
+		t.Errorf("both the citer and the cued ask should appear:\n%s", got)
+	}
+	if !strings.Contains(got, "cued by") {
+		t.Errorf("the cued ask's line should say how it got there:\n%s", got)
+	}
+	if !strings.Contains(got, "2 asks") {
+		t.Errorf("want the count in the header:\n%s", got)
+	}
+}
+
+// A cycle (A cues B, B cues A) must not loop, and must fire each ask
+// exactly once.
+func TestCueCycleFiresEachAskOnce(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	cache := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"), ""+
+		"```ask\nwhen: alpha\nname: a\ncues: b\n\nQuestion A.\n```\n\n"+
+		"```ask\nname: b\nin: nothing/**\ncues: a\n\nQuestion B.\n```\n")
+	target := filepath.Join(repo, "a.md")
+	write(t, target, "x")
+
+	got := run(t, bin, cache, map[string]any{
+		"session_id": "s", "tool_name": "Write",
+		"tool_input": map[string]any{"file_path": target, "content": "alpha"},
+	})
+	if !strings.Contains(got, "Question A.") || !strings.Contains(got, "Question B.") {
+		t.Errorf("both asks in the cycle should fire once:\n%s", got)
+	}
+	if !strings.Contains(got, "2 asks") {
+		t.Errorf("a cycle must not loop — want exactly 2 asks in the header:\n%s", got)
+	}
+}
+
+// A diamond (A and B both cue C) must fire C exactly once, not twice.
+func TestCueDiamondFiresTargetOnce(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	cache := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"), ""+
+		"```ask\nwhen: alpha\ncues: c\n\nQuestion A.\n```\n\n"+
+		"```ask\nwhen: alpha\ncues: c\n\nQuestion B.\n```\n\n"+
+		"```ask\nname: c\nin: nothing/**\n\nQuestion C.\n```\n")
+	target := filepath.Join(repo, "a.md")
+	write(t, target, "x")
+
+	got := run(t, bin, cache, map[string]any{
+		"session_id": "s", "tool_name": "Write",
+		"tool_input": map[string]any{"file_path": target, "content": "alpha"},
+	})
+	if strings.Count(got, "Question C.") != 1 {
+		t.Errorf("C is cued by both A and B — want it injected exactly once:\n%s", got)
+	}
+	if !strings.Contains(got, "3 asks") {
+		t.Errorf("want A, B and C once each — 3 asks in the header:\n%s", got)
+	}
+}
+
+// A cues: value naming nothing anywhere stays silent — the same fail-soft
+// shape as an unwarmed evokes: phrase or a missing requires: binary — never
+// an error at hook time, which the hook's only acceptable failure mode
+// forbids.
+func TestDanglingCueStaysSilentNotAnError(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	cache := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"),
+		"```ask\nwhen: alpha\ncues: nowhere-at-all\n\nQuestion A.\n```\n")
+	target := filepath.Join(repo, "a.md")
+	write(t, target, "x")
+
+	got := run(t, bin, cache, map[string]any{
+		"session_id": "s", "tool_name": "Write",
+		"tool_input": map[string]any{"file_path": target, "content": "alpha"},
+	})
+	if !strings.Contains(got, "Question A.") {
+		t.Errorf("the citer should still fire on its own merits:\n%s", got)
+	}
+	if !strings.Contains(got, "1 ask") || strings.Contains(got, "2 asks") {
+		t.Errorf("a dangling cue must contribute nothing:\n%s", got)
+	}
+}
+
+// requires: is the one gate a cued firing does not bypass — a cued ask
+// naming an uninstalled tool still shouldn't inject.
+func TestCuedTargetStillHonorsRequires(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	cache := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"), ""+
+		"```ask\nwhen: alpha\ncues: needs-tool\n\nQuestion A.\n```\n\n"+
+		"```ask\nname: needs-tool\nrequires: definitely-not-a-real-binary-xyz\n\nQuestion B.\n```\n")
+	target := filepath.Join(repo, "a.md")
+	write(t, target, "x")
+
+	got := run(t, bin, cache, map[string]any{
+		"session_id": "s", "tool_name": "Write",
+		"tool_input": map[string]any{"file_path": target, "content": "alpha"},
+	})
+	if !strings.Contains(got, "Question A.") {
+		t.Errorf("the citer should still fire:\n%s", got)
+	}
+	if strings.Contains(got, "Question B.") {
+		t.Errorf("the cued target names a missing binary and should not inject:\n%s", got)
+	}
+}

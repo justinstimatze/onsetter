@@ -713,3 +713,202 @@ func TestSkillFrontmatterNamesEveryHeader(t *testing.T) {
 		t.Errorf("skill.md's description must list the headers as %q, or the skill will not surface for the ones it omits", list)
 	}
 }
+
+func TestNameParsesAndDefaultsEmpty(t *testing.T) {
+	r := parseOne(t, "```ask\nname: check-token-scope\n\nAsk.\n```\n")
+	if r.Name != "check-token-scope" {
+		t.Errorf("name: did not set Name, got %q", r.Name)
+	}
+	plain := parseOne(t, "```ask\nwhen: TODO\n\nAsk.\n```\n")
+	if plain.Name != "" {
+		t.Error("an ask with no name: header should default to empty")
+	}
+}
+
+// Repeated name: is last wins, the same as in: and on: — a silent overwrite
+// rather than an accumulation, unlike a regex or requires: header.
+func TestNameRepeatedIsLastWins(t *testing.T) {
+	r := parseOne(t, "```ask\nname: first\nname: second\n\nAsk.\n```\n")
+	if r.Name != "second" {
+		t.Errorf("repeated name: should be last wins, got %q", r.Name)
+	}
+}
+
+func TestCuesRepeatedIsAppend(t *testing.T) {
+	r := parseOne(t, "```ask\ncues: alpha\ncues: beta\n\nAsk.\n```\n")
+	if len(r.Cues) != 2 || r.Cues[0] != "alpha" || r.Cues[1] != "beta" {
+		t.Errorf("cues: should accumulate, got %v", r.Cues)
+	}
+}
+
+// name: and cues: are never gates — Match fires or rejects exactly the same
+// with or without them, the same guarantee TestRevisitNeverAffectsMatch
+// makes for revisit:.
+func TestNameAndCuesNeverAffectMatch(t *testing.T) {
+	e := Edit{New: "TODO: fix this"}
+	plain := parseOne(t, "```ask\nwhen: TODO\n\nAsk.\n```\n")
+	decorated := parseOne(t, "```ask\nwhen: TODO\nname: x\ncues: y\n\nAsk.\n```\n")
+	pm, pok := match(plain, e)
+	dm, dok := match(decorated, e)
+	if pok != dok || pm != dm {
+		t.Errorf("name:/cues: changed Match's outcome: (%q, %v) vs (%q, %v)", pm, pok, dm, dok)
+	}
+}
+
+// Identity must not move with name: alone — renaming an ask (to fix a
+// collision, say) should not re-arm every already-answered session
+// instance of it, the same treatment Requires already gets.
+func TestIDIgnoresName(t *testing.T) {
+	a := parseOne(t, "```ask\nwhen: x\nname: first\n\nAsk.\n```\n")
+	b := parseOne(t, "```ask\nwhen: x\nname: second\n\nAsk.\n```\n")
+	if a.ID() != b.ID() {
+		t.Error("ID changed when only name: changed")
+	}
+}
+
+// Identity has to move with cues:, unlike name: — a freshly wired cue on an
+// ask that already fired this session (with an unchanged quote) needs a new
+// key or it never gets a chance to walk during that session.
+func TestIDChangesWithCues(t *testing.T) {
+	a := parseOne(t, "```ask\nwhen: x\n\nAsk.\n```\n")
+	b := parseOne(t, "```ask\nwhen: x\ncues: something\n\nAsk.\n```\n")
+	if a.ID() == b.ID() {
+		t.Error("adding cues: did not change the ask's ID")
+	}
+}
+
+func TestByNameSkipsUnnamed(t *testing.T) {
+	named := parseOne(t, "```ask\nname: alpha\n\nAsk.\n```\n")
+	unnamed := parseOne(t, "```ask\nwhen: x\n\nAsk.\n```\n")
+	m := ByName([]*Ask{named, unnamed})
+	if len(m) != 1 || m["alpha"] != named {
+		t.Errorf("ByName should index only the named ask, got %v", m)
+	}
+}
+
+func parseAt(t *testing.T, source, src string) *Ask {
+	t.Helper()
+	rs, err := Parse(strings.NewReader(src), source)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(rs) != 1 {
+		t.Fatalf("got %d asks, want 1", len(rs))
+	}
+	return rs[0]
+}
+
+func TestValidateCuesFindsDuplicateName(t *testing.T) {
+	a := parseAt(t, "/repo/CLAUDE.md", "```ask\nname: dup\n\nFirst.\n```\n")
+	b := parseAt(t, "/repo/CLAUDE.md", "```ask\nname: dup\n\nSecond.\n```\n")
+	problems := ValidateCues([]*Ask{a, b})
+	if len(problems) != 1 || problems[0].Kind != "duplicate-name" || problems[0].Value != "dup" {
+		t.Errorf("want one duplicate-name problem for %q, got %v", "dup", problems)
+	}
+}
+
+func TestValidateCuesFindsDanglingCue(t *testing.T) {
+	a := parseAt(t, "/repo/CLAUDE.md", "```ask\ncues: nowhere\n\nAsk.\n```\n")
+	problems := ValidateCues([]*Ask{a})
+	if len(problems) != 1 || problems[0].Kind != "dangling-cue" || problems[0].Value != "nowhere" {
+		t.Errorf("want one dangling-cue problem for %q, got %v", "nowhere", problems)
+	}
+}
+
+// A target declared below the citer's own directory resolves in a
+// whole-repo ByName view but can never actually be reached at hook time,
+// since discover.Asks only ever walks upward from the edited file. This is
+// the scope-mismatch gap the design has to flag rather than silently trust.
+func TestValidateCuesFindsCueOutOfScope(t *testing.T) {
+	citer := parseAt(t, "/repo/CLAUDE.md", "```ask\ncues: nested\n\nAsk.\n```\n")
+	target := parseAt(t, "/repo/sub/CLAUDE.md", "```ask\nname: nested\n\nTarget.\n```\n")
+	problems := ValidateCues([]*Ask{citer, target})
+	if len(problems) != 1 || problems[0].Kind != "cue-out-of-scope" || problems[0].Value != "nested" {
+		t.Errorf("want one cue-out-of-scope problem for %q, got %v", "nested", problems)
+	}
+}
+
+// The mirror image of the scope test above: a target declared in an
+// ancestor of the citer (or the same file) is exactly the supported shape
+// and should report clean.
+func TestValidateCuesAllowsAncestorAndSameFileTargets(t *testing.T) {
+	root := parseAt(t, "/repo/CLAUDE.md", "```ask\nname: root-target\n\nRoot.\n```\n")
+	nested := parseAt(t, "/repo/sub/CLAUDE.md", "```ask\ncues: root-target\n\nAsk.\n```\n")
+	sameFileA := parseAt(t, "/repo/CLAUDE.md", "```ask\nname: sibling\n\nA.\n```\n")
+	sameFileB := parseAt(t, "/repo/CLAUDE.md", "```ask\ncues: sibling\n\nB.\n```\n")
+	if problems := ValidateCues([]*Ask{root, nested, sameFileA, sameFileB}); len(problems) != 0 {
+		t.Errorf("want no problems for an ancestor or same-file target, got %v", problems)
+	}
+}
+
+func TestCascadeFiresACuedTargetWithNoQuote(t *testing.T) {
+	target := parseOne(t, "```ask\nname: check-token-scope\nwhen: never-matches-directly\n\nCued prose.\n```\n")
+	citer := parseOne(t, "```ask\ncues: check-token-scope\n\nCiting ask.\n```\n")
+	asks := []*Ask{citer, target}
+	direct := []CascadeHit{{Ask: citer, Matched: "fetch(creds)"}}
+
+	out := Cascade(asks, direct)
+	if len(out) != 2 {
+		t.Fatalf("want 2 hits (direct + cued), got %d: %v", len(out), out)
+	}
+	cued := out[1]
+	if cued.Ask != target || cued.Matched != "" || cued.Via != citer {
+		t.Errorf("cued hit wrong shape: %+v", cued)
+	}
+}
+
+// A cycle (A cues B, B cues A) must not loop, and must fire each ask
+// exactly once.
+func TestCascadeCycleFiresEachOnce(t *testing.T) {
+	a := parseOne(t, "```ask\nname: a\ncues: b\n\nA.\n```\n")
+	b := parseOne(t, "```ask\nname: b\ncues: a\n\nB.\n```\n")
+	asks := []*Ask{a, b}
+	direct := []CascadeHit{{Ask: a}}
+
+	out := Cascade(asks, direct)
+	if len(out) != 2 {
+		t.Fatalf("want exactly 2 hits from a cycle, got %d: %v", len(out), out)
+	}
+}
+
+// A diamond (A and B both cue C) must fire C exactly once, not twice.
+func TestCascadeDiamondFiresTargetOnce(t *testing.T) {
+	c := parseOne(t, "```ask\nname: c\n\nC.\n```\n")
+	a := parseOne(t, "```ask\ncues: c\n\nA.\n```\n")
+	b := parseOne(t, "```ask\ncues: c\n\nB.\n```\n")
+	asks := []*Ask{a, b, c}
+	direct := []CascadeHit{{Ask: a}, {Ask: b}}
+
+	out := Cascade(asks, direct)
+	if len(out) != 3 {
+		t.Fatalf("want 3 hits (2 direct + C once), got %d: %v", len(out), out)
+	}
+}
+
+// A cued ask naming an uninstalled tool still shouldn't inject — requires:
+// is the one gate a cued firing does not bypass.
+func TestCascadeSkipsCuedTargetMissingRequires(t *testing.T) {
+	target := parseOne(t, "```ask\nname: needs-tool\nrequires: definitely-not-a-real-binary-xyz\n\nCued.\n```\n")
+	citer := parseOne(t, "```ask\ncues: needs-tool\n\nCiter.\n```\n")
+	asks := []*Ask{citer, target}
+	direct := []CascadeHit{{Ask: citer}}
+
+	out := Cascade(asks, direct)
+	if len(out) != 1 {
+		t.Errorf("want only the direct hit, cued target should be skipped for missing requires:, got %v", out)
+	}
+}
+
+// A cues: value naming nothing in asks contributes nothing — the same
+// fail-soft shape as an unwarmed evokes: phrase or a missing requires:
+// binary, never an error at match time.
+func TestCascadeSilentOnDanglingCue(t *testing.T) {
+	citer := parseOne(t, "```ask\ncues: nowhere\n\nCiter.\n```\n")
+	asks := []*Ask{citer}
+	direct := []CascadeHit{{Ask: citer}}
+
+	out := Cascade(asks, direct)
+	if len(out) != 1 {
+		t.Errorf("want only the direct hit for a dangling cue, got %v", out)
+	}
+}

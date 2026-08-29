@@ -68,6 +68,8 @@ type Ask struct {
 	Requires  []string // binary names that must resolve on $PATH
 	Evokes    []string // fuzzy trigger phrases; fires on any one, not all
 	Revisit   bool     // widen the session key from the quote to the whole edit
+	Name      string   // stable handle other asks can cue by; not part of ID()
+	Cues      []string // names of other asks to fire alongside this one
 	Body      string
 }
 
@@ -96,12 +98,21 @@ type Edit struct {
 // ID is stable across edits elsewhere in the file and changes when the ask
 // itself changes. Line numbers are not usable as an identity: inserting a
 // paragraph above an ask would make every ask below it fire again.
+//
+// Name is deliberately left out, for the same reason Requires already is:
+// it is how other asks address this one, not part of the question being
+// asked, so renaming an ask (to fix a collision, say) should not re-arm
+// every already-answered session instance of it. Cues is included: adding a
+// cues: line to an ask that already fired this session, with an unchanged
+// quote, has to re-arm it — otherwise a freshly wired cue never gets a
+// chance to walk during that session.
 func (r *Ask) ID() string {
 	h := sha256.New()
-	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%t",
+	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%t\x00%s",
 		r.In, strings.Join(r.NotIn, "\x01"), reSrc(r.When), reSrc(r.Added),
 		reSrc(r.Removed)+"\x02"+reSrc(r.Has)+"\x03"+strings.Join(r.Untouched, "\x01"),
-		reSrc(r.Not), r.On, strings.Join(r.Evokes, "\x01"), r.Body, r.Revisit)
+		reSrc(r.Not), r.On, strings.Join(r.Evokes, "\x01"), r.Body, r.Revisit,
+		strings.Join(r.Cues, "\x01"))
 	return hex.EncodeToString(h.Sum(nil))[:12]
 }
 
@@ -152,11 +163,13 @@ func Skill() string { return skill }
 // them. One list, so the parse error, the reference in `onsetter headers` and
 // the funnel in `onsetter replay` cannot disagree about what exists.
 //
-// `revisit` is last and out of step with that ordering on purpose: Match
-// never looks at it. It is metadata the hook dispatcher reads afterward, to
-// decide what the session key for a firing includes — not a gate a pending
-// edit can pass or fail.
-var Headers = []string{"requires", "in", "not-in", "on", "not", "has", "untouched", "added", "removed", "when", "evokes", "revisit"}
+// `revisit`, `name` and `cues` are last and out of step with that ordering
+// on purpose: Match never looks at any of the three. `revisit` is metadata
+// the hook dispatcher reads afterward, to decide what the session key for a
+// firing includes. `name` is only ever read by another ask's `cues:`, and
+// `cues:` itself is walked by Cascade, not by Match — none of the three is
+// a gate a pending edit can pass or fail on its own.
+var Headers = []string{"requires", "in", "not-in", "on", "not", "has", "untouched", "added", "removed", "when", "evokes", "revisit", "name", "cues"}
 
 // Result is the outcome of matching one ask against one edit. When it fired,
 // Matched is the text the content gate hit, so the injection can quote it
@@ -193,6 +206,21 @@ func no(gate, pattern, note string) Result {
 	return Result{Gate: gate, Pattern: pattern, Note: note}
 }
 
+// missingRequires returns the first requires: binary that does not resolve
+// on $PATH, and whether every one of them did. Shared by Match, which needs
+// to name the culprit in its Result, and Cascade, which only needs to know
+// whether a cued candidate is meaningful to fire on this machine at all —
+// a cued ask still shouldn't inject if it names a tool that isn't installed,
+// even though every other gate is bypassed for it.
+func (r *Ask) missingRequires() (string, bool) {
+	for _, bin := range r.Requires {
+		if _, err := exec.LookPath(bin); err != nil {
+			return bin, false
+		}
+	}
+	return "", true
+}
+
 // Match reports whether the ask applies to a pending write of content to path,
 // and either what its content gate matched or which gate turned it away.
 //
@@ -217,10 +245,8 @@ func (r *Ask) Match(e Edit) Result {
 	// is dominated by process spawn (see "No cache" in README's Design
 	// section), so the ordering was chosen for a legible rejection reason, not
 	// against a cost that was never the bottleneck.
-	for _, bin := range r.Requires {
-		if _, err := exec.LookPath(bin); err != nil {
-			return no("requires", bin, "not found on $PATH")
-		}
+	if missing, ok := r.missingRequires(); !ok {
+		return no("requires", missing, "not found on $PATH")
 	}
 	if path == "" {
 		switch {
@@ -351,6 +377,137 @@ func (r *Ask) Match(e Edit) Result {
 		}
 	}
 	return Result{OK: true, Matched: clip(matched)}
+}
+
+// ByName indexes asks by their name: header, skipping any that left it
+// blank. A cues: value can only ever resolve within whatever slice the
+// caller passes in — the hook's own per-edit discover.Asks(path) for a real
+// firing, every ask in the repo for lint and status — so scope is entirely
+// a property of what's fed in here, not of anything ByName does itself.
+func ByName(asks []*Ask) map[string]*Ask {
+	m := make(map[string]*Ask, len(asks))
+	for _, a := range asks {
+		if a.Name != "" {
+			m[a.Name] = a
+		}
+	}
+	return m
+}
+
+// CueProblem is one thing ValidateCues found wrong with a name: or cues:
+// declaration.
+type CueProblem struct {
+	Ask   *Ask   // the ask carrying the problem
+	Kind  string // "duplicate-name", "dangling-cue", or "cue-out-of-scope"
+	Value string // the name: or cues: value in question
+}
+
+// ValidateCues checks every name: and cues: declaration in asks against
+// each other. Two ways a author gets this wrong that Cascade itself has no
+// way to notice, because it just silently finds nothing to fire either way:
+//
+// duplicate-name: two asks declaring the same name: — the second one wins
+// silently in ByName, so whichever cue meant the first one now reaches the
+// second instead.
+//
+// dangling-cue: a cues: value matching no name: anywhere in asks.
+//
+// cue-out-of-scope: a cues: value that does resolve, but to an ask whose
+// Dir is not an ancestor of (or equal to) the citing ask's own Dir. A cue
+// can only ever be reached at hook time from within the citing ask's own
+// CLAUDE.md ancestor chain (discover.Asks walks strictly upward), so a
+// target declared in a directory nested below the citer resolves here —
+// asks is the whole repo — while silently never resolving for most of the
+// files the citer's own in: actually reaches. This is a heuristic, not a
+// proof: it flags the shape of the mistake (target nested below citer) by
+// comparing directories, not by simulating every path in: could match.
+func ValidateCues(asks []*Ask) []CueProblem {
+	var problems []CueProblem
+
+	seen := map[string]*Ask{}
+	for _, a := range asks {
+		if a.Name == "" {
+			continue
+		}
+		if _, dup := seen[a.Name]; dup {
+			problems = append(problems, CueProblem{Ask: a, Kind: "duplicate-name", Value: a.Name})
+		}
+		seen[a.Name] = a
+	}
+
+	byName := ByName(asks)
+	for _, a := range asks {
+		for _, cue := range a.Cues {
+			target, ok := byName[cue]
+			if !ok {
+				problems = append(problems, CueProblem{Ask: a, Kind: "dangling-cue", Value: cue})
+				continue
+			}
+			rel, err := filepath.Rel(target.Dir, a.Dir)
+			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				problems = append(problems, CueProblem{Ask: a, Kind: "cue-out-of-scope", Value: cue})
+			}
+		}
+	}
+	return problems
+}
+
+// CascadeHit is one ask reached for a single edit, either because its own
+// gate matched (Matched holds the quoted text, Via is nil) or because a
+// matched ask's cues: named it (Matched is always empty, Via names the
+// citer).
+type CascadeHit struct {
+	Ask     *Ask
+	Matched string
+	Via     *Ask
+}
+
+// Cascade walks cues: breadth-first from an already-computed set of direct
+// matches, resolving names against asks — the same slice Match was already
+// run over, so a cue can only ever reach an ask that could have been
+// discovered for this edit in the first place. Bounded by len(asks): a
+// visited-set keyed by Ask.ID() means every ask is walked at most once per
+// call, which is what makes a genuine cycle (A cues B, B cues A) and a
+// diamond (A and B both cue C) both safe without a separate depth counter.
+//
+// requires: is the one gate a cued ask still has to clear — a fact about
+// the machine, not about this edit, so a cued ask naming an uninstalled
+// tool still shouldn't inject. Every other gate is bypassed on purpose:
+// that is the entire point of being reached by name instead of by match.
+//
+// Pure and session-unaware. hook.go layers store.Fired/store.Record
+// filtering on top of this result the same way it already does for direct
+// hits; list and replay, which have no session concept at all, just render
+// it directly.
+func Cascade(asks []*Ask, direct []CascadeHit) []CascadeHit {
+	byName := ByName(asks)
+	visited := make(map[string]bool, len(direct))
+	out := make([]CascadeHit, len(direct))
+	copy(out, direct)
+	for _, h := range direct {
+		visited[h.Ask.ID()] = true
+	}
+
+	queue := make([]CascadeHit, len(direct))
+	copy(queue, direct)
+	for len(queue) > 0 {
+		citer := queue[0]
+		queue = queue[1:]
+		for _, cue := range citer.Ask.Cues {
+			target, ok := byName[cue]
+			if !ok || visited[target.ID()] {
+				continue
+			}
+			visited[target.ID()] = true
+			if _, ok := target.missingRequires(); !ok {
+				continue
+			}
+			hit := CascadeHit{Ask: target, Via: citer.Ask}
+			out = append(out, hit)
+			queue = append(queue, hit)
+		}
+	}
+	return out
 }
 
 // diffLines returns the inserted and deleted lines of old -> new, each joined
@@ -542,6 +699,10 @@ func parseBlock(lines []string, source, dir string, start int) (*Ask, error) {
 				return nil, fmt.Errorf("revisit: %q is not \"true\" (omit the header for the default)", v)
 			}
 			r.Revisit = true
+		case "name":
+			r.Name = v
+		case "cues":
+			r.Cues = append(r.Cues, v) // repeated cues: cues every one, not an AND/OR — it isn't a gate
 		default:
 			return nil, fmt.Errorf("unknown header %q (want %s)%s", k, strings.Join(Headers, ", "), hint)
 		}

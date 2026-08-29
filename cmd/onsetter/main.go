@@ -90,7 +90,8 @@ An ask is a fenced block in any CLAUDE.md:
 
 Headers, one blank line, then the prose. Every header is optional, and they
 apply in this order — which is the order ` + "`replay`" + ` reports a funnel in,
-except the last: ` + "`revisit`" + ` never gates, so it never appears there.
+except the last three: ` + "`revisit`" + `, ` + "`name`" + ` and ` + "`cues`" + `
+never gate, so none of the three ever appears there.
 
   requires   a binary resolving on $PATH — a fact about the machine, not the file
   in         glob, relative to this CLAUDE.md's directory  (default: all below)
@@ -104,6 +105,8 @@ except the last: ` + "`revisit`" + ` never gates, so it never appears there.
   when       regex against the incoming text
   evokes     a fuzzy trigger phrase, not a regex — fires on any one, not all
   revisit    true — widens the session key to the whole edit, not just the quote
+  name       a handle another ask's cues: can point at
+  cues       fires a second, named ask in the same injection, gate unchecked
 
 Repeat a regex header for an AND (` + "`not`" + ` is an OR of suppressors, and
 ` + "`evokes`" + ` — not a regex at all — is an OR too); RE2 has no lookahead, so

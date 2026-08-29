@@ -233,6 +233,12 @@ order `replay` reports a funnel in:
 | `removed` | only the lines this edit deletes | — |
 | `when` | the incoming text. `(?i)` for case-insensitive | any content |
 | `evokes` | the incoming text, semantically — not a regex | none |
+| `revisit` | nothing — widens the session key to the whole edit, not just the quote | `false` |
+| `name` | nothing — gives another ask something to cue | none |
+| `cues` | nothing — fires a second, named ask in the same injection | none |
+
+The last three never gate — none of them can turn a pending edit away, and
+none appears in `replay`'s funnel.
 
 `when` and `not` see `content` on a Write and `new_string` on an Edit — the
 replacement span, not the whole file. Repeat `when`, `added`, `removed`,
@@ -345,6 +351,31 @@ separates that pair — the phrases need rewording, not a different number.
 That is the whole reason this exists as a real tool rather than a hand-run
 scratch test: the number that matters is whichever example set an author
 actually built, not the two or three pairs it shipped measured against.
+
+`name` and `cues` let one ask fire a second one by name, without checking
+that second ask's own gate at all:
+
+```ask
+when: fetch\(.*credentials
+cues: check-token-scope
+
+Fetching with a credential in scope — does the token this uses have write
+access it doesn't need here?
+```
+
+```ask
+name: check-token-scope
+not-in: **
+
+Cued-only prose lives here, reachable only by name.
+```
+
+A cued firing never quotes anything, so it fires once per session like any
+other no-content-gate ask, and it can only ever reach a `name:` declared in a
+`CLAUDE.md` that is an ancestor of (or the same file as) the citing ask's own
+— never one nested below it. A cycle or a diamond of cues is safe: each ask
+is visited at most once per edit. `onsetter headers` has the full mechanics
+and the one real gotcha (the ancestor-scope rule above).
 
 Most blocks are one header and a paragraph. An ask in `corpus/CLAUDE.md` with
 no `in:` governs everything under `corpus/`, which is the scope its author can
@@ -541,7 +572,9 @@ $ onsetter list corpus/locations/quamash_1962/creek_bridge.json
 ```
 
 It also answers the harder question, which is why an ask you just wrote is
-*not* firing. There are a dozen headers, and the one that rejected gets marked:
+*not* firing. There are fourteen headers, and the one that rejected gets marked
+— unless a `cues:` from elsewhere reached it anyway, in which case `list`
+says so instead:
 
 ```
 $ onsetter list corpus/chars/quamash_1962/art_callahan.json

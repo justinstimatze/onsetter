@@ -40,3 +40,30 @@ func TestListPrintsRequires(t *testing.T) {
 		t.Errorf("list does not name requires: as the rejecting gate:\n%s", got)
 	}
 }
+
+// A cue-only ask's own gate always rejects — that's the idiom — so list has
+// to know it was cued in before it renders that ask's own turn, or it
+// misreports "would not fire" on an ask the hook would actually inject.
+func TestListReportsACuedAskAsWouldFire(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"), ""+
+		"```ask\nwhen: TODO\ncues: check-token-scope\n\nCiting question.\n```\n\n"+
+		"```ask\nname: check-token-scope\nnot-in: **\n\nCued question.\n```\n")
+	write(t, filepath.Join(repo, "a.md"), "TODO fix this")
+
+	got := listIn(t, bin, repo, "a.md")
+	if !strings.Contains(got, "name:      check-token-scope") {
+		t.Errorf("list does not print the name: header:\n%s", got)
+	}
+	if !strings.Contains(got, "cues:      check-token-scope") {
+		t.Errorf("list does not print the cues: header:\n%s", got)
+	}
+	if !strings.Contains(got, "would fire, cued by") {
+		t.Errorf("list should report the cue-only ask as would fire, cued by its citer:\n%s", got)
+	}
+	if strings.Contains(got, "would not fire") {
+		t.Errorf("the cued ask should not read as would not fire:\n%s", got)
+	}
+}

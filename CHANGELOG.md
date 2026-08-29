@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.7.0 — 2026-08-29
+
+- New headers: `name:` and `cues:`. A fired ask can now cue a second, named
+  ask into the same injection — `cues: check-token-scope` fires the ask
+  declared `name: check-token-scope` alongside its own, without that second
+  ask's own gate being checked at all. Every gate but `requires:` is
+  bypassed for a cued firing; `requires:` still has to resolve, since it's
+  a fact about the machine rather than the edit. A cued firing never
+  quotes anything, so it fires once per session the same way any other
+  no-content-gate ask does, and `revisit:` on the target does nothing for a
+  firing reached this way. Loop-safe by construction: a cascade visits
+  each ask at most once per edit, so a cycle (A cues B, B cues A) or a
+  diamond (A and B both cue C) both fire every ask exactly once.
+  `cues:` can only ever reach a `name:` declared in a `CLAUDE.md` that is
+  an ancestor of (or the same file as) the citing ask's own — the same
+  chain `discover.Asks` already walks for a real edit — never one nested
+  below it. `onsetter lint` and `onsetter status` both flag the common
+  mistake shape (a target declared below its citer) as a heuristic; a cue
+  scoped wrong will still show as zero cued fires in `onsetter replay`
+  where the author expected otherwise. The idiom for prose meant to only
+  ever fire by being cued, never on its own: `not-in: **`.
+  `ID()` folds `cues:` into its hash (so a freshly wired cue gets a chance
+  to walk a session where the citer already fired once) but leaves `name:`
+  out entirely, the same treatment `requires:` already gets — renaming an
+  ask to fix a collision shouldn't re-arm every already-answered session
+  instance of it. This re-arms every deployed ask once per in-flight
+  session regardless of whether it uses `cues:`, the same one-time cost
+  `revisit:` and the v0.3.0 key-format change both paid.
+  Prompted by the user's own comparison to habit-stacking in *Atomic
+  Habits* — one habit's completion becoming the next one's cue.
+
 ## v0.6.0 — 2026-08-26
 
 - New command: `onsetter status [dir]`. Read-only, four sections: is the

@@ -54,9 +54,29 @@ func cmdList(args []string) error {
 		}
 	}
 
-	fmt.Printf("%d ask(s) govern %s\n", len(asks), target)
+	// Match once per ask up front, not inside the render loop below: a
+	// cue-only ask (in: nothing/**, say) always rejects its own gate, and
+	// the render loop needs to know it was reached anyway, by whatever ask
+	// cued it, before it gets to that ask's own turn.
+	results := make(map[*ask.Ask]ask.Result, len(asks))
+	var direct []ask.CascadeHit
 	for _, r := range asks {
 		res := r.Match(ask.Edit{Path: abs, New: string(content), Disk: string(content), Exists: exists, Evokes: evokes})
+		results[r] = res
+		if res.OK {
+			direct = append(direct, ask.CascadeHit{Ask: r, Matched: res.Matched})
+		}
+	}
+	viaOf := map[string]*ask.Ask{}
+	for _, h := range ask.Cascade(asks, direct) {
+		if h.Via != nil {
+			viaOf[h.Ask.ID()] = h.Via
+		}
+	}
+
+	fmt.Printf("%d ask(s) govern %s\n", len(asks), target)
+	for _, r := range asks {
+		res := results[r]
 		// The rejection is marked on the header that caused it rather than
 		// stated below, because a verdict line has to repeat the pattern to be
 		// useful and the pattern is already on screen. Every gate that can
@@ -107,11 +127,19 @@ func cmdList(args []string) error {
 		for _, ev := range r.Evokes {
 			fmt.Printf("    evokes:    %s%s\n", ev, evokesNote)
 		}
+		if r.Name != "" {
+			fmt.Printf("    name:      %s\n", r.Name)
+		}
+		for _, c := range r.Cues {
+			fmt.Printf("    cues:      %s\n", c)
+		}
 		switch {
 		case res.OK && res.Matched == "":
 			fmt.Printf("    → would fire (no content gate)\n")
 		case res.OK:
 			fmt.Printf("    → would fire, matching %q\n", res.Matched)
+		case viaOf[r.ID()] != nil:
+			fmt.Printf("    → would fire, cued by %s\n", viaOf[r.ID()].Where(base))
 		default:
 			fmt.Printf("    → would not fire · turned away at %s:\n", res.Gate)
 		}
@@ -144,6 +172,7 @@ func cmdReplay(args []string) error {
 		r        *ask.Ask
 		eligible int
 		fired    int
+		cued     int // of fired, how many were cued rather than gate-matched
 		samples  []string
 		// turned is how many files each gate rejected, which is the only way to
 		// tell a dead regex from a clean corpus: both read as 0%, but a dead
@@ -153,6 +182,7 @@ func cmdReplay(args []string) error {
 	}
 	stats := map[string]*stat{}
 	var order []string
+	base, _ := os.Getwd()
 
 	for _, f := range files {
 		content, err := os.ReadFile(f)
@@ -167,6 +197,30 @@ func cmdReplay(args []string) error {
 				break
 			}
 		}
+		// Match every ask first, so a cue-only ask's own (rejecting) result
+		// can be overridden by Cascade before any stat is touched — same
+		// two-pass shape cmdList uses, for the same reason: an ask reached
+		// only by being cued always fails its own gate on its own.
+		type outcome struct {
+			res ask.Result
+			via *ask.Ask
+		}
+		results := make(map[*ask.Ask]outcome, len(asks))
+		var direct []ask.CascadeHit
+		for _, r := range asks {
+			exists := r.On != ask.ModeMint
+			res := r.Match(ask.Edit{Path: f, New: string(content), Disk: string(content), Exists: exists, Evokes: evokes})
+			results[r] = outcome{res: res}
+			if res.OK {
+				direct = append(direct, ask.CascadeHit{Ask: r, Matched: res.Matched})
+			}
+		}
+		for _, h := range ask.Cascade(asks, direct) {
+			if h.Via != nil {
+				results[h.Ask] = outcome{res: results[h.Ask].res, via: h.Via}
+			}
+		}
+
 		for _, r := range asks {
 			id := r.ID()
 			s, ok := stats[id]
@@ -175,26 +229,27 @@ func cmdReplay(args []string) error {
 				stats[id] = s
 				order = append(order, id)
 			}
-			// A mint ask can never fire against a file already on disk, so
-			// replay simulates the mint. The number answers "if these were
-			// being created now, how many would trip the gate" — labelled as
-			// simulated below, because it is not what a run would have done.
-			exists := r.On != ask.ModeMint
 			s.eligible++
-			res := r.Match(ask.Edit{Path: f, New: string(content), Disk: string(content), Exists: exists, Evokes: evokes})
-			if res.OK {
+			o := results[r]
+			switch {
+			case o.res.OK:
 				s.fired++
 				if len(s.samples) < 3 {
-					s.samples = append(s.samples, fmt.Sprintf("%s%s", shortOne(f), quoted(res.Matched)))
+					s.samples = append(s.samples, fmt.Sprintf("%s%s", shortOne(f), quoted(o.res.Matched)))
 				}
-				continue
+			case o.via != nil:
+				s.fired++
+				s.cued++
+				if len(s.samples) < 3 {
+					s.samples = append(s.samples, fmt.Sprintf("%s (cued by %s)", shortOne(f), o.via.Where(base)))
+				}
+			default:
+				s.turned[o.res.Gate]++
+				s.reason[o.res.Gate] = o.res.Pattern
 			}
-			s.turned[res.Gate]++
-			s.reason[res.Gate] = res.Pattern
 		}
 	}
 
-	base, _ := os.Getwd()
 	fmt.Printf("Replayed %d file(s).\n\n", len(files))
 	sort.SliceStable(order, func(i, j int) bool {
 		return rate(stats[order[i]].fired, stats[order[i]].eligible) >
@@ -219,6 +274,9 @@ func cmdReplay(args []string) error {
 				s.r.Where(base), s.fired, s.eligible, rate(s.fired, s.eligible)*100)
 		}
 		warnBlindToDiff(s.r)
+		if s.cued > 0 {
+			fmt.Printf("    %d of those %d fire(s) were cued, not gate-matched\n", s.cued, s.fired)
+		}
 		for _, ex := range s.samples {
 			fmt.Printf("    %s\n", ex)
 		}
@@ -244,6 +302,7 @@ func cmdLint(args []string) error {
 
 	bad := 0
 	total := 0
+	var all []*ask.Ask
 	for _, src := range sources {
 		asks, err := discover.ParseSource(src)
 		if err != nil {
@@ -251,14 +310,33 @@ func cmdLint(args []string) error {
 			bad++
 		}
 		total += len(asks)
+		all = append(all, asks...)
 		for _, r := range asks {
-			if !r.Gated() && (r.In == "**" || r.In == "**/*") && r.On == ask.ModeAny {
+			// A `not-in: **` ask can never fire on its own — the idiom for
+			// prose meant only to be reached by cues: — so it is narrowed
+			// enough not to be a banner even with no content gate. A merely
+			// non-empty NotIn is not the same claim: `not-in: vendor/**`
+			// still fires on everything else, so only the exact "**"
+			// exemption applies.
+			cueOnly := len(r.NotIn) == 1 && r.NotIn[0] == "**"
+			if !r.Gated() && !cueOnly && (r.In == "**" || r.In == "**/*") && r.On == ask.ModeAny {
 				fmt.Fprintf(os.Stderr,
 					"%s: fires on every edit below %s with no content gate — that is a banner\n",
 					r.Where(root), shortOne(r.Dir))
 				bad++
 			}
 		}
+	}
+	for _, p := range ask.ValidateCues(all) {
+		switch p.Kind {
+		case "duplicate-name":
+			fmt.Fprintf(os.Stderr, "%s: name: %q is also declared by another ask — cues: naming it would silently reach whichever one ByName happens to keep\n", p.Ask.Where(root), p.Value)
+		case "dangling-cue":
+			fmt.Fprintf(os.Stderr, "%s: cues: %q names no ask anywhere under %s\n", p.Ask.Where(root), p.Value, shortOne(root))
+		case "cue-out-of-scope":
+			fmt.Fprintf(os.Stderr, "%s: cues: %q resolves, but to an ask declared below this one's own CLAUDE.md — it can only ever be reached at hook time for edits inside that subdirectory\n", p.Ask.Where(root), p.Value)
+		}
+		bad++
 	}
 	fmt.Printf("%d ask(s) in %d file(s).\n", total, len(sources))
 	if bad > 0 {

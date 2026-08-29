@@ -102,30 +102,31 @@ func cmdHook() error {
 		}
 	}
 
-	type hit struct {
-		r       *ask.Ask
-		matched string
-	}
-	var hits []hit
-	var ids []string
+	// Every ask whose own gate matches seeds the cascade, regardless of
+	// whether this exact firing has already been shown this session — that
+	// filter runs once below, over the combined direct+cued list, so a
+	// citer already asked-and-answered can still cue a target that hasn't
+	// been. What Cascade walks is "did the gate match", not "is this new".
+	var direct []ask.CascadeHit
 	for _, r := range asks {
-		// Matched before fired, because the key includes what matched: a
-		// content ask asking about a string it has not shown you yet is a
-		// question you have not answered. Costs a regex over the incoming text
-		// for asks that turn out to be spent, which is well under the file read
-		// the same edit already paid for.
 		res := r.Match(ev)
-		if !res.OK {
-			continue
+		if res.OK {
+			direct = append(direct, ask.CascadeHit{Ask: r, Matched: res.Matched})
 		}
-		key := session.Key(r.ID(), res.Matched)
-		if r.Revisit {
-			key = session.KeyRevisit(r.ID(), res.Matched, content)
+	}
+	combined := ask.Cascade(asks, direct)
+
+	var hits []ask.CascadeHit
+	var ids []string
+	for _, h := range combined {
+		key := session.Key(h.Ask.ID(), h.Matched)
+		if h.Ask.Revisit && h.Via == nil {
+			key = session.KeyRevisit(h.Ask.ID(), h.Matched, content)
 		}
 		if store.Fired(key) {
 			continue
 		}
-		hits = append(hits, hit{r, res.Matched})
+		hits = append(hits, h)
 		ids = append(ids, key)
 	}
 	// After matching, so an edit never counts as having already satisfied an
@@ -146,10 +147,13 @@ func cmdHook() error {
 	fmt.Fprintf(&b, "onsetter — %d %s for this edit. Each question is asked once per session.\n", len(hits), noun)
 	for _, h := range hits {
 		gate := "no content gate"
-		if h.matched != "" {
-			gate = fmt.Sprintf("matched %q", h.matched)
+		switch {
+		case h.Matched != "":
+			gate = fmt.Sprintf("matched %q", h.Matched)
+		case h.Via != nil:
+			gate = fmt.Sprintf("cued by %s", h.Via.Where(base))
 		}
-		fmt.Fprintf(&b, "\n▸ %s · %s\n%s\n", h.r.Where(base), gate, h.r.Body)
+		fmt.Fprintf(&b, "\n▸ %s · %s\n%s\n", h.Ask.Where(base), gate, h.Ask.Body)
 	}
 	b.WriteString("\nTo retire one, delete its block from the file named above.")
 

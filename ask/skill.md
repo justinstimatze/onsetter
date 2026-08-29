@@ -1,6 +1,6 @@
 ---
 name: onsetter
-description: How to write, measure and wire an onsetter ask — prose in a fenced ask block inside an ordinary CLAUDE.md, injected in front of the Write or Edit that trips its gate. Read this before adding or changing an ask block, before picking a header (requires, in, not-in, on, not, has, untouched, added, removed, when, evokes, revisit), and whenever a CLAUDE.md in the tree already contains ask fences. Covers where the block goes, the replay-before-wiring rule, the two things replay cannot measure, and why a wide gate now costs more than it used to.
+description: How to write, measure and wire an onsetter ask — prose in a fenced ask block inside an ordinary CLAUDE.md, injected in front of the Write or Edit that trips its gate. Read this before adding or changing an ask block, before picking a header (requires, in, not-in, on, not, has, untouched, added, removed, when, evokes, revisit, name, cues), and whenever a CLAUDE.md in the tree already contains ask fences. Covers where the block goes, the replay-before-wiring rule, the two things replay cannot measure, why a wide gate now costs more than it used to, and how one ask can cue another by name.
 ---
 
 # Writing an onsetter ask
@@ -20,12 +20,18 @@ side needs no discovery; the authoring side does.
 onsetter headers
 ```
 
-All twelve headers with their haystacks, the gotchas, and a
+All fourteen headers with their haystacks, the gotchas, and a
 what-you-want-to-catch table. It ships inside the binary, so it always
 describes the version actually installed. Read it rather than working from
 memory of this file — the trap that keeps catching people is `not:`, which is a
 content regex and not a path exclusion, so `not: **/*_test.go` matches nothing
 and the ask fires on the tests anyway. Path exclusion is `not-in:`.
+
+Two of the fourteen, `name:` and `cues:`, aren't gates at all: `cues:` lets a
+fired ask also inject a second ask's prose by name, without checking that
+second ask's own gate — `onsetter headers` covers the semantics, the
+loop-safety, and the one real gotcha (a cue can only reach an ask its own
+`CLAUDE.md` chain would already see).
 
 ## Where the block goes
 
