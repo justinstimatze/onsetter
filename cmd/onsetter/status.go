@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/justinstimatze/onsetter/ask"
 	"github.com/justinstimatze/onsetter/internal/discover"
@@ -14,13 +15,14 @@ import (
 )
 
 // cmdStatus answers one question: if a file were written right now that
-// should trip an ask, would anything actually happen. Five ways that can
+// should trip an ask, would anything actually happen. Six ways that can
 // silently be false — the hook not wired, a block that fails to parse, an
 // evokes: phrase never warmed, a requires: binary not on this machine, a
-// cues: value that resolves to nothing (or to something out of scope) —
-// each fail quietly on their own: a rejected write, a dead hook, a block
-// nobody notices was never checked. status is read-only, so running it
-// changes nothing it reports on.
+// cues: value that resolves to nothing (or to something out of scope), an
+// on: read ask with no Read wiring to ever reach it — each fail quietly on
+// their own: a rejected write, a dead hook, a block nobody notices was
+// never checked. status is read-only, so running it changes nothing it
+// reports on.
 func cmdStatus(args []string) error {
 	dir := "."
 	if len(args) > 0 {
@@ -38,13 +40,17 @@ func cmdStatus(args []string) error {
 	bad := 0
 
 	fmt.Println("wiring")
-	if !statusWiring() {
+	wiringOK, readWired := statusWiring()
+	if !wiringOK {
 		bad++
 	}
 
 	fmt.Println("\ndiscovery")
 	asks, problems := statusDiscovery(dir)
 	bad += problems
+
+	fmt.Println("\non: read wiring")
+	bad += statusReadWiring(asks, readWired, dir)
 
 	fmt.Println("\nevokes: cache")
 	bad += statusEvokes(asks, dir)
@@ -61,11 +67,18 @@ func cmdStatus(args []string) error {
 	return nil
 }
 
+// wiredEntry is one hooks.PreToolUse[] entry install.go wrote, or would
+// have dropped and replaced on the next run.
+type wiredEntry struct{ Matcher, Command string }
+
 // statusWiring checks the one settings file install.go would have written
 // to by default. A custom CLAUDE_SETTINGS or a project-local settings.json
 // is invisible to this check — see the CHANGELOG for why that scope was
-// chosen over scanning every location Claude Code merges.
-func statusWiring() bool {
+// chosen over scanning every location Claude Code merges. Returns whether
+// onsetter is wired at all, and separately whether Read is among the
+// matchers wired — the fact statusReadWiring needs, captured here before
+// discovery runs rather than re-parsed a second time.
+func statusWiring() (ok, readWired bool) {
 	settings := filepath.Join(os.Getenv("HOME"), ".claude", "settings.local.json")
 	if v := os.Getenv("CLAUDE_SETTINGS"); v != "" {
 		settings = v
@@ -75,30 +88,36 @@ func statusWiring() bool {
 	if err != nil {
 		fmt.Printf("  %s — not found\n", shortOne(settings))
 		fmt.Println("  → run `onsetter install`")
-		return false
+		return false, false
 	}
 	var root map[string]any
 	if err := json.Unmarshal(b, &root); err != nil {
 		fmt.Printf("  %s — not valid JSON\n", shortOne(settings))
-		return false
+		return false, false
 	}
-	command, ok := findOnsetterCommand(root)
-	if !ok {
+	entries := findOnsetterEntries(root)
+	if len(entries) == 0 {
 		fmt.Printf("  %s — no onsetter entry in PreToolUse\n", shortOne(settings))
 		fmt.Println("  → run `onsetter install`")
-		return false
+		return false, false
 	}
 	fmt.Printf("  %s — wired\n", shortOne(settings))
-	fmt.Printf("  command: %s\n", command)
-	return true
+	for _, e := range entries {
+		fmt.Printf("  matcher: %-16s command: %s\n", e.Matcher, e.Command)
+		if matcherHasToken(e.Matcher, "Read") {
+			readWired = true
+		}
+	}
+	return true, readWired
 }
 
-// findOnsetterCommand walks the same hooks.PreToolUse[].hooks[] shape
-// install.go writes, looking for the entry install.go itself would drop and
-// replace on the next run. The two must agree on what counts as "already
-// wired" — one loose end here and status could report wired when install
-// would silently duplicate the entry, or the reverse.
-func findOnsetterCommand(root map[string]any) (string, bool) {
+// findOnsetterEntries walks the same hooks.PreToolUse[].hooks[] shape
+// install.go writes, returning every entry install.go itself would drop
+// and replace on the next run. The two must agree on what counts as
+// "already wired" — one loose end here and status could report wired when
+// install would silently duplicate an entry, or the reverse.
+func findOnsetterEntries(root map[string]any) []wiredEntry {
+	var found []wiredEntry
 	hooks, _ := root["hooks"].(map[string]any)
 	pre, _ := hooks["PreToolUse"].([]any)
 	for _, e := range pre {
@@ -106,6 +125,7 @@ func findOnsetterCommand(root map[string]any) (string, bool) {
 		if !ok {
 			continue
 		}
+		matcher, _ := entry["matcher"].(string)
 		inner, _ := entry["hooks"].([]any)
 		for _, h := range inner {
 			hm, ok := h.(map[string]any)
@@ -114,11 +134,54 @@ func findOnsetterCommand(root map[string]any) (string, bool) {
 			}
 			cmd, _ := hm["command"].(string)
 			if isOnsetterHookCommand(cmd) {
-				return cmd, true
+				found = append(found, wiredEntry{Matcher: matcher, Command: cmd})
 			}
 		}
 	}
-	return "", false
+	return found
+}
+
+// matcherHasToken reports whether a "|"-separated matcher string
+// (install.go's own format, e.g. "Write|Edit|Bash") names token exactly —
+// a split-and-compare rather than strings.Contains, so a hypothetical
+// future tool name that happens to contain "Read" as a substring can never
+// false-positive.
+func matcherHasToken(matcher, token string) bool {
+	for _, part := range strings.Split(matcher, "|") {
+		if part == token {
+			return true
+		}
+	}
+	return false
+}
+
+// statusReadWiring is the sixth silent-failure mode cmdStatus's own doc
+// comment names: an on: read ask defined with no Read wiring to ever reach
+// it fails exactly like a requires: binary that's missing or a cues: value
+// that resolves to nothing — silently, discovered only by a firing that
+// never happens, unless something checks proactively. asks is already in
+// hand from statusDiscovery; this is a look at data already collected, not
+// a new walk.
+func statusReadWiring(asks []*ask.Ask, readWired bool, dir string) int {
+	var readAsks []*ask.Ask
+	for _, a := range asks {
+		if a.On == ask.ModeRead {
+			readAsks = append(readAsks, a)
+		}
+	}
+	if len(readAsks) == 0 {
+		fmt.Println("  no on: read asks")
+		return 0
+	}
+	if readWired {
+		fmt.Printf("  %d on: read ask(s), Read is wired\n", len(readAsks))
+		return 0
+	}
+	for _, a := range readAsks {
+		fmt.Printf("  UNREACHABLE %s — on: read, but Read is not wired\n", a.Where(dir))
+	}
+	fmt.Println("  → run `onsetter install --read`")
+	return len(readAsks)
 }
 
 // statusDiscovery is lint's own walk, kept in sync deliberately: same

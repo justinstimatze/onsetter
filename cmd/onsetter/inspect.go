@@ -58,10 +58,25 @@ func cmdList(args []string) error {
 	// cue-only ask (in: nothing/**, say) always rejects its own gate, and
 	// the render loop needs to know it was reached anyway, by whatever ask
 	// cued it, before it gets to that ask's own turn.
+	//
+	// Two synthetic edits, not one: an on: read ask would always report
+	// "turned away at on: read" against the write-shaped edit below, which
+	// is accurate for the write case and actively misleading for what an
+	// on: read ask's own author wants to know. New is "" on the read edit,
+	// matching a real Read call, which never carries pending content.
+	writeEdit := ask.Edit{Path: abs, New: string(content), Disk: string(content), Exists: exists, Evokes: evokes}
+	readEdit := writeEdit
+	readEdit.New = ""
+	readEdit.IsRead = true
+
 	results := make(map[*ask.Ask]ask.Result, len(asks))
 	var direct []ask.CascadeHit
 	for _, r := range asks {
-		res := r.Match(ask.Edit{Path: abs, New: string(content), Disk: string(content), Exists: exists, Evokes: evokes})
+		e := writeEdit
+		if r.On == ask.ModeRead {
+			e = readEdit
+		}
+		res := r.Match(e)
 		results[r] = res
 		if res.OK {
 			direct = append(direct, ask.CascadeHit{Ask: r, Matched: res.Matched})
@@ -209,7 +224,15 @@ func cmdReplay(args []string) error {
 		var direct []ask.CascadeHit
 		for _, r := range asks {
 			exists := r.On != ask.ModeMint
-			res := r.Match(ask.Edit{Path: f, New: string(content), Disk: string(content), Exists: exists, Evokes: evokes})
+			e := ask.Edit{Path: f, New: string(content), Disk: string(content), Exists: exists, Evokes: evokes}
+			// Same reasoning as cmdList: an on: read ask needs the
+			// Read-shaped edit or it always reports "turned away at on:
+			// read" against this write-shaped one.
+			if r.On == ask.ModeRead {
+				e.New = ""
+				e.IsRead = true
+			}
+			res := r.Match(e)
 			results[r] = outcome{res: res}
 			if res.OK {
 				direct = append(direct, ask.CascadeHit{Ask: r, Matched: res.Matched})
@@ -323,6 +346,45 @@ func cmdLint(args []string) error {
 				fmt.Fprintf(os.Stderr,
 					"%s: fires on every edit below %s with no content gate — that is a banner\n",
 					r.Where(root), shortOne(r.Dir))
+				bad++
+			}
+			// A Read call never carries incoming text, so when:/added:/
+			// removed:/not:/evokes: — every gate that reads content, not
+			// disk — can never match on: read. An ask combining them is
+			// dead on arrival, the same failure shape a banner is.
+			if r.On == ask.ModeRead {
+				var dead []string
+				if len(r.When) > 0 {
+					dead = append(dead, "when:")
+				}
+				if len(r.Added) > 0 {
+					dead = append(dead, "added:")
+				}
+				if len(r.Removed) > 0 {
+					dead = append(dead, "removed:")
+				}
+				if len(r.Not) > 0 {
+					dead = append(dead, "not:")
+				}
+				if len(r.Evokes) > 0 {
+					dead = append(dead, "evokes:")
+				}
+				if len(dead) > 0 {
+					fmt.Fprintf(os.Stderr,
+						"%s: on: read combined with %s can never fire — a Read call has no incoming text for any of these to match\n",
+						r.Where(root), strings.Join(dead, ", "))
+					bad++
+				}
+			}
+			// revisit: true used to widen the session key on its own; every
+			// matched ask does that unconditionally now, so the header no
+			// longer changes anything for one. Flagged, not silently
+			// ignored — an author reading this ask would otherwise believe
+			// revisit: is still doing something.
+			if r.Revisit && (len(r.When) > 0 || len(r.Added) > 0 || len(r.Removed) > 0 || len(r.Evokes) > 0) {
+				fmt.Fprintf(os.Stderr,
+					"%s: revisit: true is redundant — every matched ask always widens the session key now; safe to remove\n",
+					r.Where(root))
 				bad++
 			}
 		}

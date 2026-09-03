@@ -1,12 +1,18 @@
-// Package session remembers which asks have already fired this session.
+// Package session counts how many times each ask has already fired this
+// session.
 //
-// A question you have already answered is noise the second time, and noise is
-// how you teach someone to scroll past the block without reading it. What
-// counts as the same question is decided by Key: the ask, plus the text it
-// quoted back — or by KeyRevisit, for an ask that says the file changing
-// again is itself worth asking about, quote or no. There is no decay model
-// here on purpose, because nothing measurable distinguishes an ask that
-// changed an edit from one that was skimmed and ignored.
+// It used to decide whether to show a question again at all. It doesn't
+// anymore, for a matched ask: nothing measurable distinguishes an ask that
+// changed an edit from one that was skimmed and ignored, so guessing "this
+// one's been handled" from a persisted bit is exactly the kind of decay
+// model this package has always refused to build. What it does instead is
+// count, so the injection can say "asked N times already" and let the one
+// thing actually good at "seen this, still the same, continuing" — the
+// model reading it — do the triage. What counts as the same occurrence is
+// decided by Key: the ask, plus the text it quoted back and the edit that
+// produced it. A reminder (nothing quoted) still suppresses after the
+// first sighting, because a second firing of a bare reminder is the
+// literal same sentence, not a new occurrence with anything new to say.
 package session
 
 import (
@@ -14,12 +20,14 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
 
-// Store is a per-session set of ask IDs, kept as one file of newline-joined
-// IDs. Small enough that read-modify-write beats anything cleverer.
+// Store is a per-session count of ask-occurrence keys, kept as one file of
+// newline-joined `key:count` lines. Small enough that read-modify-write
+// beats anything cleverer.
 //
 // It also keeps the set of paths written this session, in a sibling file, so
 // an ask can gate on "you changed this and not that". That set is only what
@@ -27,7 +35,7 @@ import (
 // PreToolUse hook on Write or Edit, so it counts as untouched.
 type Store struct {
 	path    string
-	seen    map[string]bool
+	seen    map[string]int
 	touched map[string]bool
 }
 
@@ -35,7 +43,7 @@ type Store struct {
 // store that never persists, which degrades to firing every time rather than
 // to failing.
 func Open(id string) *Store {
-	s := &Store{seen: map[string]bool{}, touched: map[string]bool{}}
+	s := &Store{seen: map[string]int{}, touched: map[string]bool{}}
 	if id == "" || strings.ContainsAny(id, "/\\") {
 		return s
 	}
@@ -64,51 +72,49 @@ func Open(id string) *Store {
 	}
 	for _, line := range strings.Split(string(b), "\n") {
 		if line = strings.TrimSpace(line); line != "" {
-			s.seen[line] = true
+			// key:count, split on the last colon since a matched key already
+			// contains one of its own (see keyed). A line from before this
+			// format existed — bare, or key:hash with no count — fails to
+			// parse as a count and is dropped: that occurrence starts
+			// counting fresh in this session rather than erroring, the same
+			// fail-soft shape the rest of this package already uses.
+			i := strings.LastIndex(line, ":")
+			if i < 0 {
+				continue
+			}
+			n, err := strconv.Atoi(line[i+1:])
+			if err != nil || n <= 0 {
+				continue
+			}
+			s.seen[line[:i]] = n
 		}
 	}
 	return s
 }
 
-// Key is the identity of one firing: the ask, and the text it quoted back.
+// Key is the identity of one occurrence: the ask, the text it quoted back,
+// and the edit that produced it.
 //
-// Two kinds of ask live in the same format and want opposite treatment. An ask
-// that gates only on a path is a reminder — the reader needs to know a standard
-// exists, and once they know it, saying it again is noise. It has no match, so
-// its key is the bare ask ID and it fires once per session, which is what it
-// did before this existed.
+// Two kinds of ask live in the same format and want opposite treatment. An
+// ask that gates only on a path is a reminder — the reader needs to know a
+// standard exists, and once they know it, saying it again is noise, since a
+// second firing is the literal same sentence with nothing new in it. It has
+// no match, so its key is the bare ask ID, edit ignored, and it still
+// suppresses after the first sighting.
 //
-// An ask that gates on content is an inspection: it is asking about a specific
-// string, and "is this narrator overreach" is a different question about
-// `you nod` than about `you find yourself`. Keying on the quote makes a
-// different quote a different question, and leaves the same quote quiet the
-// second time, because that one has been answered.
+// An ask that gates on content is an inspection: it is asking about a
+// specific string in a specific place, and "is this narrator overreach" is a
+// different question about `you nod` in one file than the same three words
+// in another. Keying on the match alone would collapse those into one
+// question — the collision this package used to have, and the reason `edit`
+// is part of the key now, not an opt-in widening. Two edits producing
+// identical matched text are still two different occurrences once the edit
+// around the quote differs, and the exact same edit recurring is still
+// worth a fresh count rather than a permanent silence.
 //
-// Nothing has to declare which kind it is. Gating on content is the
-// declaration. The ceiling is authored too: an ask can fire at most once per
-// distinct alternative its own pattern can match, so whoever wrote twenty
-// alternatives has already said those are twenty things worth being asked
-// about.
-//
-// The match is hashed rather than appended, because it can be up to 80 bytes of
-// arbitrary text including newlines, and the store is one key per line.
-func Key(id, matched string) string {
-	if matched == "" {
-		return id
-	}
-	return keyed(id, matched)
-}
-
-// KeyRevisit is Key for an ask carrying `revisit: true`. The quoted match
-// alone stays the identity of a firing: a later edit that reintroduces the
-// exact same literal string reads as the same, already-answered question, no
-// matter how much of the file has changed around it since. `revisit: true`
-// says that assumption is wrong for this ask — the file being edited again at
-// all, with the flagged text still in it, is itself worth a second look, so
-// the key widens to the match plus the edit that produced it. Two edits
-// quoting identical text are still two different questions once the second
-// one is a different edit.
-func KeyRevisit(id, matched, edit string) string {
+// The match is hashed rather than appended, because it can be up to 80 bytes
+// of arbitrary text including newlines, and the store is one key per line.
+func Key(id, matched, edit string) string {
 	if matched == "" {
 		return id
 	}
@@ -120,33 +126,35 @@ func keyed(id, material string) string {
 	return id + ":" + hex.EncodeToString(sum[:])[:8]
 }
 
-// Fired reports whether this key has already been shown. Callers pass a Key,
-// not a bare ask ID. Sessions written before keys carried a match hold bare
-// IDs, so a path-only ask still suppresses correctly and a content ask re-arms
-// once — the worst case for an in-flight session is one extra question.
-func (s *Store) Fired(id string) bool { return s.seen[id] }
+// Fired reports whether this key has already been shown at least once.
+// Callers pass a Key, not a bare ask ID. This is what the reminder bucket
+// still suppresses on; a matched ask reads Count instead.
+func (s *Store) Fired(id string) bool { return s.seen[id] > 0 }
 
-// Record marks asks as shown. Errors are dropped: failing to persist means a
-// ask repeats, which is a nuisance, not a fault worth surfacing mid-edit.
+// Count reports how many times this key has already fired, 0 if never. A
+// matched ask's injection uses this to mark a repeat rather than hide it.
+func (s *Store) Count(id string) int { return s.seen[id] }
+
+// Record marks occurrences as shown, incrementing each one's count by one —
+// including a key that was already present, since "fired again" is the
+// whole point for a matched ask now, not a fact to collapse away. Errors are
+// dropped: failing to persist means a count resets, a nuisance, not a fault
+// worth surfacing mid-edit.
 func (s *Store) Record(ids ...string) {
 	if s.path == "" {
 		return
 	}
-	changed := false
-	for _, id := range ids {
-		if !s.seen[id] {
-			s.seen[id] = true
-			changed = true
-		}
-	}
-	if !changed {
+	if len(ids) == 0 {
 		return
 	}
-	keys := make([]string, 0, len(s.seen))
-	for k := range s.seen {
-		keys = append(keys, k)
+	for _, id := range ids {
+		s.seen[id]++
 	}
-	_ = os.WriteFile(s.path, []byte(strings.Join(keys, "\n")+"\n"), 0o644)
+	lines := make([]string, 0, len(s.seen))
+	for k, n := range s.seen {
+		lines = append(lines, k+":"+strconv.Itoa(n))
+	}
+	_ = os.WriteFile(s.path, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
 }
 
 // Touched returns every path written this session, in no particular order.

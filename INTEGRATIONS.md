@@ -110,6 +110,15 @@ none of the three ever touched a path. `on: mint`/`on: edit` were already
 path-independent — they read `Edit.Exists` directly, which a `winze-agent`
 caller can set from its own notion of new-vs-revised memory.
 
+`Edit` later gained a fourth field, `IsRead bool`, for `on: read` — a mode
+that lets an ask react to a `Read` tool call instead of a pending write. Its
+default is `false`, and every `Edit{...}` construction site in this repo,
+`ask_external_test.go`'s own included, is already keyed rather than
+positional, so a `winze-agent` call building an `Edit` without naming
+`IsRead` keeps compiling and behaving exactly as it does today — `capture-
+guard` has no notion of a Read-shaped call and doesn't need one to keep
+working.
+
 ## Where stull sits in both
 
 Not in the interception path either way. stull is the compile target for

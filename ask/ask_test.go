@@ -171,6 +171,45 @@ func TestModes(t *testing.T) {
 	}
 }
 
+// on: read is its own axis, not a fourth existence-state: any/mint/edit are
+// all "a pending write," and read is the opposite, a Read call. No ask
+// matches both kinds.
+func TestOnReadMatchesOnlyAReadCall(t *testing.T) {
+	read := parseOne(t, "```ask\non: read\n\nAsk.\n```\n")
+	any := parseOne(t, "```ask\n\nAsk.\n```\n")
+	mint := parseOne(t, "```ask\non: mint\n\nAsk.\n```\n")
+	edit := parseOne(t, "```ask\non: edit\n\nAsk.\n```\n")
+	p := filepath.FromSlash("/repo/corpus/a.md")
+
+	writeEdit := Edit{Path: p, New: "x", Disk: "x", Exists: true}
+	readEdit := Edit{Path: p, New: "", Disk: "x", Exists: true, IsRead: true}
+
+	if _, ok := match(read, writeEdit); ok {
+		t.Error("on: read fired on a Write/Edit-shaped call")
+	}
+	if _, ok := match(read, readEdit); !ok {
+		t.Error("on: read did not fire on a Read-shaped call")
+	}
+	for name, r := range map[string]*Ask{"any": any, "mint": mint, "edit": edit} {
+		if _, ok := match(r, readEdit); ok {
+			t.Errorf("on: %s fired on a Read-shaped call", name)
+		}
+	}
+}
+
+// has: reads the file as it stands regardless of what triggered the call,
+// so it works against a Read the same way it does against a pending write.
+func TestOnReadWithHasStillReadsDisk(t *testing.T) {
+	r := parseOne(t, "```ask\non: read\nhas: sync\\.Mutex\n\nAsk.\n```\n")
+	p := filepath.FromSlash("/repo/corpus/a.go")
+	if _, ok := match(r, Edit{Path: p, Disk: "no locks here", Exists: true, IsRead: true}); ok {
+		t.Error("has: fired against disk content that doesn't match")
+	}
+	if _, ok := match(r, Edit{Path: p, Disk: "var m sync.Mutex", Exists: true, IsRead: true}); !ok {
+		t.Error("has: did not fire against matching disk content on a Read")
+	}
+}
+
 // Identity must survive an unrelated edit to the same CLAUDE.md, or inserting
 // a paragraph above an ask re-fires every ask below it for the session.
 func TestIDIgnoresPosition(t *testing.T) {
@@ -635,12 +674,63 @@ func TestRevisitNeverAffectsMatch(t *testing.T) {
 	}
 }
 
-// Identity has to move with revisit: too, the same as every other header.
-func TestIDChangesWithRevisit(t *testing.T) {
+// The inverse of every other header, on purpose: revisit: true is retired
+// (every matched ask always widens the session key now), so it no longer
+// changes what an ask does, and ID() stops treating it as part of the
+// question — unlike Requires and Name, which were always excluded, this is
+// a deliberate change from prior behavior, pinned here the same way
+// TestRevisitNeverAffectsMatch already pins Match's side of the same fact.
+func TestIDDoesNotChangeWithRevisit(t *testing.T) {
 	a := parseOne(t, "```ask\nwhen: TODO\n\nAsk.\n```\n")
 	b := parseOne(t, "```ask\nwhen: TODO\nrevisit: true\n\nAsk.\n```\n")
+	if a.ID() != b.ID() {
+		t.Error("adding revisit: true changed the ask's ID, but revisit: is retired and should no longer affect identity")
+	}
+}
+
+func TestAlwaysParsesAndDefaultsFalse(t *testing.T) {
+	r := parseOne(t, "```ask\nwhen: TODO\nalways: true\n\nAsk.\n```\n")
+	if !r.Always {
+		t.Error("always: true did not set Always")
+	}
+	plain := parseOne(t, "```ask\nwhen: TODO\n\nAsk.\n```\n")
+	if plain.Always {
+		t.Error("an ask with no always: header should default to false")
+	}
+}
+
+// "true" is the only accepted spelling, same reasoning as revisit:'s own
+// test: there is no antonym, so a stray "false" would silently do nothing
+// rather than the no-op it looks like.
+func TestAlwaysRejectsAnyOtherValue(t *testing.T) {
+	for _, v := range []string{"false", "yes", "1"} {
+		_, err := Parse(strings.NewReader("```ask\nalways: "+v+"\n\nAsk.\n```\n"), "/repo/CLAUDE.md")
+		if err == nil {
+			t.Errorf("always: %s parsed cleanly, want an error", v)
+		}
+	}
+}
+
+// always: never gates, the same as revisit: — Match fires or rejects
+// exactly the same with or without it, because the hook dispatcher, not
+// Match, is what reads it.
+func TestAlwaysNeverAffectsMatch(t *testing.T) {
+	e := Edit{New: "TODO: fix this"}
+	plain := parseOne(t, "```ask\nwhen: TODO\n\nAsk.\n```\n")
+	always := parseOne(t, "```ask\nwhen: TODO\nalways: true\n\nAsk.\n```\n")
+	pm, pok := match(plain, e)
+	am, aok := match(always, e)
+	if pok != aok || pm != am {
+		t.Errorf("always: true changed Match's outcome: (%q, %v) vs (%q, %v)", pm, pok, am, aok)
+	}
+}
+
+// Identity has to move with always: too, the same as every other header.
+func TestIDChangesWithAlways(t *testing.T) {
+	a := parseOne(t, "```ask\nwhen: TODO\n\nAsk.\n```\n")
+	b := parseOne(t, "```ask\nwhen: TODO\nalways: true\n\nAsk.\n```\n")
 	if a.ID() == b.ID() {
-		t.Error("adding revisit: true did not change the ask's ID")
+		t.Error("adding always: true did not change the ask's ID")
 	}
 }
 
@@ -652,7 +742,7 @@ func TestHeadersListsEveryHeaderTheParserAccepts(t *testing.T) {
 		switch h {
 		case "on":
 			v = "mint"
-		case "revisit":
+		case "revisit", "always":
 			v = "true"
 		}
 		if _, err := Parse(strings.NewReader("```ask\n"+h+": "+v+"\n\nAsk.\n```\n"), "/repo/CLAUDE.md"); err != nil {

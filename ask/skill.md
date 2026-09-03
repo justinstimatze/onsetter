@@ -1,6 +1,6 @@
 ---
 name: onsetter
-description: How to write, measure and wire an onsetter ask — prose in a fenced ask block inside an ordinary CLAUDE.md, injected in front of the Write or Edit that trips its gate. Read this before adding or changing an ask block, before picking a header (requires, in, not-in, on, not, has, untouched, added, removed, when, evokes, revisit, name, cues), and whenever a CLAUDE.md in the tree already contains ask fences. Covers where the block goes, the replay-before-wiring rule, the two things replay cannot measure, why a wide gate now costs more than it used to, and how one ask can cue another by name.
+description: How to write, measure and wire an onsetter ask — prose in a fenced ask block inside an ordinary CLAUDE.md, injected in front of the Write or Edit that trips its gate. Read this before adding or changing an ask block, before picking a header (requires, in, not-in, on, not, has, untouched, added, removed, when, evokes, revisit, always, name, cues), and whenever a CLAUDE.md in the tree already contains ask fences. Covers where the block goes, the replay-before-wiring rule, the two things replay cannot measure, why a wide gate now costs more than it used to, and how one ask can cue another by name.
 ---
 
 # Writing an onsetter ask
@@ -20,18 +20,22 @@ side needs no discovery; the authoring side does.
 onsetter headers
 ```
 
-All fourteen headers with their haystacks, the gotchas, and a
+All fifteen headers with their haystacks, the gotchas, and a
 what-you-want-to-catch table. It ships inside the binary, so it always
 describes the version actually installed. Read it rather than working from
 memory of this file — the trap that keeps catching people is `not:`, which is a
 content regex and not a path exclusion, so `not: **/*_test.go` matches nothing
 and the ask fires on the tests anyway. Path exclusion is `not-in:`.
 
-Two of the fourteen, `name:` and `cues:`, aren't gates at all: `cues:` lets a
-fired ask also inject a second ask's prose by name, without checking that
-second ask's own gate — `onsetter headers` covers the semantics, the
-loop-safety, and the one real gotcha (a cue can only reach an ask its own
-`CLAUDE.md` chain would already see).
+Three of the fifteen, `name:`, `cues:` and `always:`, aren't gates at all:
+`cues:` lets a fired ask also inject a second ask's prose by name, without
+checking that second ask's own gate; `always:` skips the once-per-session
+suppression entirely, so an ask whose corpus is suspect by construction (every
+matching edit, not just the first) can ask every time instead of once.
+`onsetter headers` covers the semantics, the loop-safety, and the real
+gotchas (a cue can only reach an ask its own `CLAUDE.md` chain would already
+see; `always:` on an unnarrowed ask is the loudest injection this format can
+produce).
 
 ## Where the block goes
 
@@ -92,29 +96,35 @@ faithful. It says nothing about whether the gate is good.
 
 ## Lifetime, and why width costs
 
-An ask asks each question once per session, and a question is the ask plus the
-text it quoted back.
-
-So the two kinds of block get opposite treatment without either declaring
+The two kinds of block get opposite treatment without either declaring
 itself. No content gate means nothing to quote: it fires once per session
-however many files it governs — a reminder, and repeating it is noise. A
-`when:`, `added:`, `removed:` or `evokes:` keys on what it matched, so a new
-match asks again and a repeat of the same match stays quiet. `has:` gates on
-the file as it stands but never contributes a quote, so a `has:`-only block is
-a reminder too.
+however many files it governs, then goes quiet — a reminder, and a second
+firing would be the literal same sentence. A `when:`, `added:`, `removed:`
+or `evokes:` block is different: it always fires, on every occurrence, for
+the whole session — marked `(asked N× already this session)` once a given
+occurrence (the quote plus the edit around it, not the quote alone) recurs.
+`has:` gates on the file as it stands but never contributes a quote, so a
+`has:`-only block is a reminder too, same as a `cues:`-reached firing, which
+never checks its own gate and so never has anything to quote either.
 
-The consequence when drafting: gate width is expensive. A pattern matching most
-of a corpus used to cost one injection per session and now costs one per
-distinct match. An ask whose own regex admits twenty alternatives has a ceiling
-of twenty questions.
+That's not a tightened once-per-session default — it's no suppression at
+all for the matched case, replaced by a count. The old key hashed the quote
+alone, so two unrelated occurrences sharing a short match silently
+collapsed into one already-answered question; the count exists so a repeat
+gets triaged by whoever's reading it, not hidden by a session file that
+can't tell a genuine repeat from a different occurrence that looks similar.
 
-If a content-gated ask only ever fires once, its pattern is matching a property
-of the file type rather than a signal that anything changed.
+The consequence when drafting: gate width is still expensive, more than
+before. A pattern matching most of a corpus now costs one injection per
+occurrence, with no once-per-session ceiling to cap it — the old "twenty
+alternatives, twenty questions" ceiling no longer holds for a matched ask,
+since the same string recurring in different edits is a fresh occurrence
+each time, not one capped question.
 
-`revisit: true` opts an ask out of that default: its key widens from the
-quote alone to the quote plus the edit that produced it, so a still-unresolved
-match asks again the next time the file is touched instead of reading as
-already-answered. See `onsetter headers` for the mechanism and its cost.
+`always: true` opts a matched ask out of the count — every firing looks
+identical, for a near-check corpus where that's already expected. `revisit:`
+is retired: its whole job was the widening that's unconditional now.
+See `onsetter headers` for the full mechanics and cost.
 
 ## Writing the prose
 

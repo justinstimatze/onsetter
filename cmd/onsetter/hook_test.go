@@ -79,76 +79,125 @@ func TestHookEndToEnd(t *testing.T) {
 	if !strings.Contains(got, "CLAUDE.md:3") {
 		t.Errorf("output does not name its source line:\n%s", got)
 	}
-
-	// Same session, same quote: silence. That question has been answered, and
-	// the answer does not change because it is a different file.
-	if again := run(t, bin, cache, map[string]any{
-		"session_id": sid, "tool_name": "Edit",
-		"tool_input": map[string]any{"file_path": target, "new_string": "and you realize she is stalling"},
-	}); again != "" {
-		t.Errorf("same quote asked twice in one session:\n%s", again)
+	if strings.Contains(got, "already this session") {
+		t.Errorf("a first firing should carry no repeat marker:\n%s", got)
 	}
 
-	// Same session, same ask, different quote: fires. "Is this narrator
-	// overreach" is a different question about `you nod` than about
-	// `you realize`, and the answers can differ.
+	// Same session, same quote, a different edit around it: fires again,
+	// still unmarked — the key includes the edit, not just the quote, so
+	// this is a genuinely new occurrence, not a repeat of the first one.
+	// This is exactly the collision fix: "you realize" in one edit no
+	// longer shares an identity with "you realize" in a different one.
+	again := run(t, bin, cache, map[string]any{
+		"session_id": sid, "tool_name": "Edit",
+		"tool_input": map[string]any{"file_path": target, "new_string": "and you realize she is stalling"},
+	})
+	if !strings.Contains(again, `matched \"you realize\"`) {
+		t.Errorf("the same quote in a different edit should still fire:\n%s", again)
+	}
+	if strings.Contains(again, "already this session") {
+		t.Errorf("a different edit is a new occurrence and should carry no marker:\n%s", again)
+	}
+
+	// A genuine repeat — the identical edit, byte for byte, as the one
+	// above — is the same occurrence, and it still fires, now marked. There
+	// is no floor left where an exact repeat stays silent.
+	exact := run(t, bin, cache, map[string]any{
+		"session_id": sid, "tool_name": "Edit",
+		"tool_input": map[string]any{"file_path": target, "new_string": "and you realize she is stalling"},
+	})
+	if !strings.Contains(exact, "asked 1× already this session") {
+		t.Errorf("a byte-identical repeat of the prior edit should fire, marked as a repeat:\n%s", exact)
+	}
+
+	// Same session, same ask, different quote: fires, no marker — this is
+	// its first time.
 	other := run(t, bin, cache, map[string]any{
 		"session_id": sid, "tool_name": "Edit",
 		"tool_input": map[string]any{"file_path": target, "new_string": "you nod again"},
 	})
 	if !strings.Contains(other, `matched \"you nod\"`) {
-		t.Errorf("a new quote did not re-arm the ask:\n%s", other)
+		t.Errorf("a new quote did not fire the ask:\n%s", other)
+	}
+	if strings.Contains(other, "already this session") {
+		t.Errorf("a different occurrence's first firing should carry no marker:\n%s", other)
 	}
 
-	// New session: it fires again.
-	if fresh := run(t, bin, cache, map[string]any{
+	// New session: no marker, count starts over.
+	fresh := run(t, bin, cache, map[string]any{
 		"session_id": "sess-xyz", "tool_name": "Edit",
 		"tool_input": map[string]any{"file_path": target, "new_string": "you nod again"},
-	}); fresh == "" {
+	})
+	if fresh == "" {
 		t.Error("ask did not fire in a new session")
+	}
+	if strings.Contains(fresh, "already this session") {
+		t.Errorf("a fresh session should not carry a marker from a different session:\n%s", fresh)
 	}
 }
 
-// revisit: true is the inverted case of TestHookEndToEnd's "same quote,
-// silence": the same regex match ("you realize") appears in two different
-// edits, and this ask should ask about both, because the file changing again
-// with the same issue still present is itself the thing worth a second look.
-func TestRevisitReArmsWhenTheEditDiffersButTheQuoteDoesNot(t *testing.T) {
+// A plain matched ask already fires on every occurrence now (see
+// TestHookEndToEnd) — what always: still uniquely buys is skipping the
+// repeat marker. Without it, this exact scenario would print "asked 1×
+// already" / "asked 2× already" on passes two and three; always: keeps
+// every firing looking identical, which is the point for a near-check ask
+// where every matching edit is already expected to be suspect.
+func TestAlwaysNeverSuppresses(t *testing.T) {
 	bin := buildBinary(t)
 	repo := t.TempDir()
 	cache := t.TempDir()
 	mkdir(t, filepath.Join(repo, ".git"))
 	write(t, filepath.Join(repo, "CLAUDE.md"),
-		"```ask\nwhen: you (nod|realize)\nrevisit: true\n\nStill narrator overreach.\n```\n")
+		"```ask\nwhen: you (nod|realize)\nalways: true\n\nEvery matching edit is suspect.\n```\n")
 	target := filepath.Join(repo, "a.md")
 	write(t, target, "old text")
 
-	sid := "sess-revisit"
-	first := run(t, bin, cache, map[string]any{
-		"session_id": sid, "tool_name": "Edit",
-		"tool_input": map[string]any{"file_path": target, "new_string": "and you realize she is lying"},
-	})
-	if !strings.Contains(first, "Still narrator overreach.") {
-		t.Fatalf("did not fire on the first edit:\n%s", first)
+	sid := "sess-always"
+	for i := 0; i < 3; i++ {
+		got := run(t, bin, cache, map[string]any{
+			"session_id": sid, "tool_name": "Edit",
+			"tool_input": map[string]any{"file_path": target, "new_string": "and you realize she is lying"},
+		})
+		if !strings.Contains(got, "Every matching edit is suspect.") {
+			t.Fatalf("pass %d: always: true stayed quiet on an identical repeat:\n%s", i, got)
+		}
+		if !strings.Contains(got, "· always") {
+			t.Errorf("pass %d: injection did not mark the ask as always:\n%s", i, got)
+		}
+		if strings.Contains(got, "already this session") {
+			t.Errorf("pass %d: always: true should never carry a repeat-count marker:\n%s", i, got)
+		}
 	}
+}
 
-	second := run(t, bin, cache, map[string]any{
+// A no-content-gate always: true ask fires on every matching file, not just
+// the first — the reminder case still isn't suppressed once per session.
+func TestAlwaysPathOnlyFiresOnEveryFile(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	cache := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	mkdir(t, filepath.Join(repo, "corpus"))
+	write(t, filepath.Join(repo, "corpus", "CLAUDE.md"),
+		"```ask\nalways: true\n\nDoes this make sense for the world?\n```\n")
+
+	sid := "sess-always-reminder"
+	one := filepath.Join(repo, "corpus", "one.md")
+	two := filepath.Join(repo, "corpus", "two.md")
+	write(t, one, "old")
+	write(t, two, "old")
+
+	if got := run(t, bin, cache, map[string]any{
 		"session_id": sid, "tool_name": "Edit",
-		"tool_input": map[string]any{"file_path": target, "new_string": "and you realize she is stalling"},
-	})
-	if !strings.Contains(second, "Still narrator overreach.") {
-		t.Errorf("revisit: true stayed quiet on a different edit quoting the same text:\n%s", second)
+		"tool_input": map[string]any{"file_path": one, "new_string": "x"},
+	}); !strings.Contains(got, "Does this make sense for the world?") {
+		t.Fatalf("did not fire on the first file:\n%s", got)
 	}
-
-	// A genuine repeat — the identical edit, byte for byte — is still the
-	// same question asked the same way, so it stays quiet even with
-	// revisit: true. Only the file changing again is what re-arms it.
-	third := run(t, bin, cache, map[string]any{
+	if got := run(t, bin, cache, map[string]any{
 		"session_id": sid, "tool_name": "Edit",
-		"tool_input": map[string]any{"file_path": target, "new_string": "and you realize she is stalling"},
-	})
-	if third != "" {
-		t.Errorf("an exact repeat of the same edit fired again:\n%s", third)
+		"tool_input": map[string]any{"file_path": two, "new_string": "x"},
+	}); !strings.Contains(got, "Does this make sense for the world?") {
+		t.Fatalf("always: true suppressed a no-content-gate ask on a second file:\n%s", got)
 	}
 }
 
@@ -361,6 +410,133 @@ func TestUntouchedIsSatisfiedByAnEarlierEditInTheSameSession(t *testing.T) {
 	edit(warm, migration, "ALTER TABLE users ADD COLUMN email text;")
 	if got := edit(warm, schema, "type User struct{ Email string }"); got != "" {
 		t.Errorf("migration was touched first; want silence, got:\n%s", got)
+	}
+}
+
+// on: read fires on a real Read tool call, and quotes nothing back — has:
+// is the content-shaped gate that still works against a Read, since it
+// reads disk content rather than incoming text.
+func TestOnReadFiresOnAReadCall(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	cache := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"),
+		"```ask\nin: corpus/**\non: read\n\nNever read the corpus directly before generating.\n```\n")
+	mkdir(t, filepath.Join(repo, "corpus"))
+	target := filepath.Join(repo, "corpus", "a.md")
+	write(t, target, "some corpus text")
+
+	got := run(t, bin, cache, map[string]any{
+		"session_id": "s", "tool_name": "Read",
+		"tool_input": map[string]any{"file_path": target},
+	})
+	if !strings.Contains(got, "Never read the corpus directly before generating.") {
+		t.Fatalf("on: read did not fire on a Read call:\n%s", got)
+	}
+	if !strings.Contains(got, "for this read") {
+		t.Errorf("the banner should say \"read\", not \"edit\":\n%s", got)
+	}
+}
+
+// The mismatch in the other direction: an on: read ask must never fire on
+// an ordinary Write or Edit.
+func TestReadNeverTriggersAWriteShapedAsk(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	cache := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"),
+		"```ask\non: read\n\nNever read the corpus directly.\n```\n")
+	target := filepath.Join(repo, "a.md")
+	write(t, target, "x")
+
+	got := run(t, bin, cache, map[string]any{
+		"session_id": "s", "tool_name": "Edit",
+		"tool_input": map[string]any{"file_path": target, "new_string": "y"},
+	})
+	if got != "" {
+		t.Errorf("on: read fired on an Edit call:\n%s", got)
+	}
+}
+
+// A Read must never satisfy an untouched: gate — reading a file is not
+// writing it, and confusing the two would corrupt untouched: for every
+// other ask watching that path.
+func TestReadDoesNotSatisfyUntouched(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	cache := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	mkdir(t, filepath.Join(repo, "migrations"))
+	write(t, filepath.Join(repo, "CLAUDE.md"),
+		"```ask\nin: schema.go\nuntouched: migrations/*.sql\n\nSchema changed, no migration touched.\n```\n")
+	schema := filepath.Join(repo, "schema.go")
+	migration := filepath.Join(repo, "migrations", "003_add_col.sql")
+	write(t, schema, "package main")
+	write(t, migration, "-- up")
+
+	// Read the migration — this must not count as touching it.
+	run(t, bin, cache, map[string]any{
+		"session_id": "s", "tool_name": "Read",
+		"tool_input": map[string]any{"file_path": migration},
+	})
+	got := run(t, bin, cache, map[string]any{
+		"session_id": "s", "tool_name": "Edit",
+		"tool_input": map[string]any{"file_path": schema, "new_string": "type User struct{ Email string }"},
+	})
+	if got == "" {
+		t.Error("a Read of the migration satisfied untouched: — it should still ask")
+	}
+}
+
+// A Bash call that writes the paired file (via a real shell redirect, not
+// Write/Edit) satisfies untouched: the same way an Edit would — the whole
+// point of the observer.
+func TestBashObserverSatisfiesUntouched(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	mkdir(t, filepath.Join(repo, "migrations"))
+	write(t, filepath.Join(repo, "CLAUDE.md"),
+		"```ask\nin: schema.go\nuntouched: migrations/*.sql\n\nSchema changed, no migration touched.\n```\n")
+	schema := filepath.Join(repo, "schema.go")
+	migration := filepath.Join(repo, "migrations", "003_add_col.sql")
+	write(t, schema, "package main")
+	write(t, migration, "-- up")
+
+	cache := t.TempDir()
+	// A shell redirect writes the migration first, then the schema edit.
+	run(t, bin, cache, map[string]any{
+		"session_id": "s", "tool_name": "Bash", "cwd": repo,
+		"tool_input": map[string]any{"command": "echo 'ALTER TABLE users ADD COLUMN email text;' >> migrations/003_add_col.sql"},
+	})
+	got := run(t, bin, cache, map[string]any{
+		"session_id": "s", "tool_name": "Edit",
+		"tool_input": map[string]any{"file_path": schema, "new_string": "type User struct{ Email string }"},
+	})
+	if got != "" {
+		t.Errorf("a Bash call writing the migration should satisfy untouched:, got:\n%s", got)
+	}
+}
+
+// A Bash call never triggers ask-matching or injection on its own, even
+// against a CLAUDE.md whose in: would otherwise reach the extracted path —
+// it is bookkeeping only.
+func TestBashCallNeverInjects(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	cache := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"),
+		"```ask\nin: out.txt\n\nDoes this make sense?\n```\n")
+
+	got := run(t, bin, cache, map[string]any{
+		"session_id": "s", "tool_name": "Bash", "cwd": repo,
+		"tool_input": map[string]any{"command": "echo hi > out.txt"},
+	})
+	if got != "" {
+		t.Errorf("a Bash call should never itself trigger an ask, got:\n%s", got)
 	}
 }
 

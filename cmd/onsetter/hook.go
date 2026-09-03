@@ -18,11 +18,13 @@ import (
 type payload struct {
 	SessionID string `json:"session_id"`
 	ToolName  string `json:"tool_name"`
+	Cwd       string `json:"cwd"`
 	ToolInput struct {
 		FilePath  string `json:"file_path"`
 		Content   string `json:"content"`    // Write
 		NewString string `json:"new_string"` // Edit
 		OldString string `json:"old_string"` // Edit
+		Command   string `json:"command"`    // Bash
 	} `json:"tool_input"`
 }
 
@@ -36,6 +38,14 @@ type out struct {
 		HookEventName     string `json:"hookEventName"`
 		AdditionalContext string `json:"additionalContext"`
 	} `json:"hookSpecificOutput"`
+}
+
+// hit is one ask reached for this edit, plus how many times its occurrence
+// key has already fired this session — 0 for a first firing, a reminder, or
+// an always: ask, which never gets a marker at all.
+type hit struct {
+	ask.CascadeHit
+	priorCount int
 }
 
 // cmdHook is the dispatcher. Every failure path here exits 0 with no output:
@@ -57,6 +67,12 @@ func cmdHook() error {
 		return nil
 	}
 
+	if p.ToolName == "Bash" {
+		recordBashTouches(p)
+		return nil
+	}
+
+	isRead := p.ToolName == "Read"
 	content := p.ToolInput.Content
 	if content == "" {
 		content = p.ToolInput.NewString
@@ -79,7 +95,7 @@ func cmdHook() error {
 	store := session.Open(p.SessionID)
 	ev := ask.Edit{
 		Path: path, New: content, Old: p.ToolInput.OldString,
-		Touched: store.Touched(), Exists: exists,
+		Touched: store.Touched(), Exists: exists, IsRead: isRead,
 	}
 	// The file itself is only read when some ask actually gates on it, so the
 	// common path stays one stat and no read.
@@ -94,8 +110,14 @@ func cmdHook() error {
 	}
 	// Same principle for the one live embed call: only paid when some ask
 	// actually has an evokes: list, and paid once regardless of how many do —
-	// they all score against the same edit content.
+	// they all score against the same edit content. Skipped entirely on a
+	// Read: content is always "" there, and lint already rejects on: read +
+	// evokes: as a dead combination — this is defense in depth for an
+	// unlinted CLAUDE.md, not the primary enforcement.
 	for _, r := range asks {
+		if isRead {
+			break
+		}
 		if len(r.Evokes) > 0 {
 			ev.Evokes = embed.BuildPredicate(content, embed.DefaultBudget)
 			break
@@ -116,22 +138,43 @@ func cmdHook() error {
 	}
 	combined := ask.Cascade(asks, direct)
 
-	var hits []ask.CascadeHit
+	// A matched hit (Matched != "") always fires — it's a specific quote in
+	// a specific edit, and a repeat of it is a genuinely new occurrence
+	// worth a fresh look, not the same already-answered question. It's
+	// marked with a running count instead. A reminder / has:-only / cued
+	// hit (Matched == "") has nothing to distinguish a repeat from the
+	// first firing — the literal same sentence — so it keeps the original
+	// suppress-after-first behavior. always: skips tracking for either
+	// bucket: for a reminder that's unchanged from before (bypass
+	// suppression); for a matched ask it now only means "don't clutter this
+	// one with a count," since firing every time is already the default.
+	var hits []hit
 	var ids []string
 	for _, h := range combined {
-		key := session.Key(h.Ask.ID(), h.Matched)
-		if h.Ask.Revisit && h.Via == nil {
-			key = session.KeyRevisit(h.Ask.ID(), h.Matched, content)
-		}
-		if store.Fired(key) {
+		if h.Ask.Always {
+			hits = append(hits, hit{h, 0})
 			continue
 		}
-		hits = append(hits, h)
+		if h.Matched == "" {
+			key := session.Key(h.Ask.ID(), "", "")
+			if store.Fired(key) {
+				continue
+			}
+			hits = append(hits, hit{h, 0})
+			ids = append(ids, key)
+			continue
+		}
+		key := session.Key(h.Ask.ID(), h.Matched, content)
+		hits = append(hits, hit{h, store.Count(key)})
 		ids = append(ids, key)
 	}
 	// After matching, so an edit never counts as having already satisfied an
-	// `untouched:` gate about itself.
-	store.Touch(path)
+	// `untouched:` gate about itself. Never for a Read — reading a file is
+	// not writing it, and marking it touched would corrupt untouched:'s
+	// semantics for every other ask watching that path.
+	if !isRead {
+		store.Touch(path)
+	}
 	if len(hits) == 0 {
 		return nil
 	}
@@ -144,7 +187,11 @@ func cmdHook() error {
 	if len(hits) == 1 {
 		noun = "ask"
 	}
-	fmt.Fprintf(&b, "onsetter — %d %s for this edit. Each question is asked once per session.\n", len(hits), noun)
+	trigger := "edit"
+	if isRead {
+		trigger = "read"
+	}
+	fmt.Fprintf(&b, "onsetter — %d %s for this %s. A repeat is marked, not hidden.\n", len(hits), noun, trigger)
 	for _, h := range hits {
 		gate := "no content gate"
 		switch {
@@ -152,6 +199,12 @@ func cmdHook() error {
 			gate = fmt.Sprintf("matched %q", h.Matched)
 		case h.Via != nil:
 			gate = fmt.Sprintf("cued by %s", h.Via.Where(base))
+		}
+		if h.priorCount > 0 {
+			gate += fmt.Sprintf(" (asked %d× already this session)", h.priorCount)
+		}
+		if h.Ask.Always {
+			gate += " · always"
 		}
 		fmt.Fprintf(&b, "\n▸ %s · %s\n%s\n", h.Ask.Where(base), gate, h.Ask.Body)
 	}

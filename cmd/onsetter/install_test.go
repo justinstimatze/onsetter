@@ -92,3 +92,54 @@ func TestInstallConvergesOnRerun(t *testing.T) {
 		t.Error("install left a hand-edited skill in place instead of regenerating it")
 	}
 }
+
+// --read is opt-in and reversible: it adds a second PreToolUse entry, and a
+// plain re-install without the flag removes it — the flags a given run
+// passes are the whole desired state, the same convergence rule the base
+// entry already follows.
+func TestInstallReadIsOptInAndReversible(t *testing.T) {
+	dir := t.TempDir()
+	settings := filepath.Join(dir, "settings.local.json")
+
+	onsetterHookCount := func(t *testing.T) int {
+		t.Helper()
+		b, err := os.ReadFile(settings)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var root struct {
+			Hooks struct {
+				PreToolUse []struct {
+					Matcher string
+					Hooks   []struct{ Command string }
+				}
+			}
+		}
+		if err := json.Unmarshal(b, &root); err != nil {
+			t.Fatalf("install wrote invalid JSON: %v", err)
+		}
+		n := 0
+		for _, e := range root.Hooks.PreToolUse {
+			for _, h := range e.Hooks {
+				if strings.Contains(h.Command, "onsetter") {
+					n++
+				}
+			}
+		}
+		return n
+	}
+
+	if err := cmdInstall([]string{"--read", settings}); err != nil {
+		t.Fatalf("install --read: %v", err)
+	}
+	if n := onsetterHookCount(t); n != 2 {
+		t.Fatalf("install --read left %d onsetter hook entries, want 2", n)
+	}
+
+	if err := cmdInstall([]string{settings}); err != nil {
+		t.Fatalf("plain re-install: %v", err)
+	}
+	if n := onsetterHookCount(t); n != 1 {
+		t.Errorf("a plain re-install left %d onsetter hook entries, want 1 (Read should be dropped)", n)
+	}
+}

@@ -104,3 +104,25 @@ func TestReplayCountsCuedFires(t *testing.T) {
 		t.Errorf("the sample line should name the citer:\n%s", got)
 	}
 }
+
+// An on: read ask needs the same Read-shaped edit cmdList's fix gives it —
+// left write-shaped, replay would report 0% turned away at on: read for
+// every file, which is the ask always being dead on the ground it's
+// actually meant to cover.
+func TestReplayReportsOnReadAsksCorrectly(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	mkdir(t, filepath.Join(repo, "corpus"))
+	write(t, filepath.Join(repo, "CLAUDE.md"),
+		"```ask\nin: corpus/**\non: read\n\nNever read the corpus directly.\n```\n")
+	write(t, filepath.Join(repo, "corpus", "a.json"), `{"aliases": ["take"]}`)
+
+	got := replayIn(t, bin, repo, "corpus/a.json")
+	if !strings.Contains(got, "100.0%") {
+		t.Errorf("on: read should read 100%%, not 0%% turned away at on: read:\n%s", got)
+	}
+	if strings.Contains(got, "turned away at  on: read") {
+		t.Errorf("on: read should not report itself as its own rejection:\n%s", got)
+	}
+}

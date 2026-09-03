@@ -69,6 +69,87 @@ func TestLintDoesNotBannerACueOnlyAsk(t *testing.T) {
 	}
 }
 
+// on: read combined with any content gate can never fire — a Read call has
+// no incoming text for when:/added:/removed:/not:/evokes: to match.
+func TestLintFailsOnReadCombinedWithContentGates(t *testing.T) {
+	for _, tc := range []struct {
+		name, header, value string
+	}{
+		{"when", "when", "TODO"},
+		{"added", "added", "TODO"},
+		{"removed", "removed", "TODO"},
+		{"not", "not", "TODO"},
+		{"evokes", "evokes", "committing without asking first"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bin := buildBinary(t)
+			repo := t.TempDir()
+			mkdir(t, filepath.Join(repo, ".git"))
+			write(t, filepath.Join(repo, "CLAUDE.md"),
+				"```ask\non: read\n"+tc.header+": "+tc.value+"\n\nAsk.\n```\n")
+
+			got, err := lintIn(t, bin, repo)
+			if err == nil {
+				t.Fatalf("want a non-zero exit: on: read + %s: can never fire", tc.header)
+			}
+			if !strings.Contains(got, tc.header+":") {
+				t.Errorf("lint does not name the dead gate:\n%s", got)
+			}
+		})
+	}
+}
+
+// on: read alone, or paired with in:/has:, is not a dead-gate combination —
+// only content gates trip it.
+func TestLintDoesNotFlagOnReadWithoutContentGates(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"), ""+
+		"```ask\nin: corpus/**\non: read\nnot-in: **\n\nCue-only, on read.\n```\n\n"+
+		"```ask\non: read\nhas: sync\\.Mutex\n\nAsk.\n```\n")
+
+	got, err := lintIn(t, bin, repo)
+	if err != nil {
+		t.Fatalf("on: read with only in:/has: should lint clean: %v\n%s", err, got)
+	}
+}
+
+// revisit: true no longer changes anything for a matched ask — every
+// matched ask always widens the session key now — so lint flags it as
+// redundant rather than staying quiet about a header that does nothing.
+func TestLintFlagsRedundantRevisit(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"),
+		"```ask\nwhen: TODO\nrevisit: true\n\nAsk.\n```\n")
+
+	got, err := lintIn(t, bin, repo)
+	if err == nil {
+		t.Fatal("want a non-zero exit: revisit: true does nothing for a matched ask now")
+	}
+	if !strings.Contains(got, "revisit: true is redundant") {
+		t.Errorf("lint does not explain why revisit: is flagged:\n%s", got)
+	}
+}
+
+// revisit: true on a reminder (no content gate) was already a no-op before
+// this change — has: alone contributes no quote either — so lint's new
+// check, scoped to Matched-capable gates, should not fire on it.
+func TestLintDoesNotFlagRevisitOnAReminder(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"),
+		"```ask\nin: corpus/**\nrevisit: true\n\nAsk.\n```\n")
+
+	got, err := lintIn(t, bin, repo)
+	if err != nil {
+		t.Fatalf("revisit: true on a reminder should lint clean: %v\n%s", err, got)
+	}
+}
+
 // A not-in: that excludes something other than everything is still a
 // banner everywhere else — the not-in: ** exemption must not be so loose
 // it swallows this case too.

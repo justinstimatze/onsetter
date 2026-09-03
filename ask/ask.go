@@ -39,16 +39,23 @@ import (
 	"github.com/hexops/gotextdiff/span"
 )
 
-// Mode narrows an ask to the creation of a file or to changes of an existing
-// one. Mint-only is the single most valuable narrowing found so far: one ask
-// fired on every file in its corpus gated on content alone, and on 2.8% of
-// them once it also required the target not to exist yet.
+// Mode narrows an ask to the creation of a file, to changes of an existing
+// one, or to a Read of one. Mint-only is the single most valuable narrowing
+// found so far: one ask fired on every file in its corpus gated on content
+// alone, and on 2.8% of them once it also required the target not to exist
+// yet.
+//
+// Any/Mint/Edit all mean "a pending Write or Edit" — Read means the
+// opposite, a Read tool call, never a pending write. No ask matches both
+// kinds: Match rejects a Read-shaped call for any of the first three, and
+// rejects a Write/Edit-shaped call for Read.
 type Mode string
 
 const (
 	ModeAny  Mode = "any"
 	ModeMint Mode = "mint"
 	ModeEdit Mode = "edit"
+	ModeRead Mode = "read"
 )
 
 // Ask is one ```ask block, parsed.
@@ -67,7 +74,8 @@ type Ask struct {
 	On        Mode
 	Requires  []string // binary names that must resolve on $PATH
 	Evokes    []string // fuzzy trigger phrases; fires on any one, not all
-	Revisit   bool     // widen the session key from the quote to the whole edit
+	Revisit   bool     // retired: every matched ask always widens now; kept so old blocks still parse
+	Always    bool     // skip the session key entirely — fires every match, no memory
 	Name      string   // stable handle other asks can cue by; not part of ID()
 	Cues      []string // names of other asks to fire alongside this one
 	Body      string
@@ -86,6 +94,11 @@ type Edit struct {
 	// `list` and `replay`, which have no session to speak of.
 	Touched []string
 	Exists  bool
+	// IsRead reports whether this call is a Read, never a pending write. New
+	// is always "" on a real Read — there is no incoming content — and
+	// callers outside onsetter's own hook are free to leave this false,
+	// which is its zero value and matches every existing caller's behavior.
+	IsRead bool
 	// Evokes answers whether the edit's content evokes a phrase from an ask's
 	// evokes: list. Nil means no fuzzy stage ran for this call — every
 	// evokes:-gated ask rejects rather than blocking on it, the same fail-soft
@@ -105,14 +118,23 @@ type Edit struct {
 // every already-answered session instance of it. Cues is included: adding a
 // cues: line to an ask that already fired this session, with an unchanged
 // quote, has to re-arm it — otherwise a freshly wired cue never gets a
-// chance to walk during that session.
+// chance to walk during that session. Always is included: adding always:
+// true to an ask mid-session should take effect on its very next match, not
+// wait for a new session id.
+//
+// Revisit is left out — a change from every prior release. It used to widen
+// the session key on its own; now every matched ask always fires and counts
+// occurrences (session.Key does the widening unconditionally), so Revisit
+// no longer changes what Match or the hook do with an ask at all. It is
+// still parsed and stored on Ask, purely so an existing revisit: true block
+// keeps parsing instead of erroring; onsetter lint flags it as redundant.
 func (r *Ask) ID() string {
 	h := sha256.New()
-	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%t\x00%s",
+	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%t",
 		r.In, strings.Join(r.NotIn, "\x01"), reSrc(r.When), reSrc(r.Added),
 		reSrc(r.Removed)+"\x02"+reSrc(r.Has)+"\x03"+strings.Join(r.Untouched, "\x01"),
-		reSrc(r.Not), r.On, strings.Join(r.Evokes, "\x01"), r.Body, r.Revisit,
-		strings.Join(r.Cues, "\x01"))
+		reSrc(r.Not), r.On, strings.Join(r.Evokes, "\x01"), r.Body,
+		strings.Join(r.Cues, "\x01"), r.Always)
 	return hex.EncodeToString(h.Sum(nil))[:12]
 }
 
@@ -163,13 +185,14 @@ func Skill() string { return skill }
 // them. One list, so the parse error, the reference in `onsetter headers` and
 // the funnel in `onsetter replay` cannot disagree about what exists.
 //
-// `revisit`, `name` and `cues` are last and out of step with that ordering
-// on purpose: Match never looks at any of the three. `revisit` is metadata
-// the hook dispatcher reads afterward, to decide what the session key for a
-// firing includes. `name` is only ever read by another ask's `cues:`, and
-// `cues:` itself is walked by Cascade, not by Match — none of the three is
-// a gate a pending edit can pass or fail on its own.
-var Headers = []string{"requires", "in", "not-in", "on", "not", "has", "untouched", "added", "removed", "when", "evokes", "revisit", "name", "cues"}
+// `revisit`, `always`, `name` and `cues` are last and out of step with that
+// ordering on purpose: Match never looks at any of the four. `revisit` and
+// `always` are metadata the hook dispatcher reads afterward, to decide what
+// (if anything) the session key for a firing includes. `name` is only ever
+// read by another ask's `cues:`, and `cues:` itself is walked by Cascade,
+// not by Match — none of the four is a gate a pending edit can pass or fail
+// on its own.
+var Headers = []string{"requires", "in", "not-in", "on", "not", "has", "untouched", "added", "removed", "when", "evokes", "revisit", "always", "name", "cues"}
 
 // Result is the outcome of matching one ask against one edit. When it fired,
 // Matched is the text the content gate hit, so the injection can quote it
@@ -278,12 +301,26 @@ func (r *Ask) Match(e Edit) Result {
 	}
 	switch r.On {
 	case ModeMint:
+		if e.IsRead {
+			return no("on", "mint", "this call is a Read, not a Write or Edit")
+		}
 		if exists {
 			return no("on", "mint", "the file already exists")
 		}
 	case ModeEdit:
+		if e.IsRead {
+			return no("on", "edit", "this call is a Read, not a Write or Edit")
+		}
 		if !exists {
 			return no("on", "edit", "the file does not exist yet")
+		}
+	case ModeAny:
+		if e.IsRead {
+			return no("on", "any", "this call is a Read; only on: read asks match one")
+		}
+	case ModeRead:
+		if !e.IsRead {
+			return no("on", "read", "this call is a Write or Edit, not a Read")
 		}
 	}
 	for _, not := range r.Not {
@@ -685,10 +722,10 @@ func parseBlock(lines []string, source, dir string, start int) (*Ask, error) {
 			r.Not = append(r.Not, re) // repeated not: is an OR of suppressors
 		case "on":
 			switch Mode(strings.ToLower(v)) {
-			case ModeAny, ModeMint, ModeEdit:
+			case ModeAny, ModeMint, ModeEdit, ModeRead:
 				r.On = Mode(strings.ToLower(v))
 			default:
-				return nil, fmt.Errorf("on: %q is not one of any, mint, edit", v)
+				return nil, fmt.Errorf("on: %q is not one of any, mint, edit, read", v)
 			}
 		case "requires":
 			r.Requires = append(r.Requires, v) // repeated requires: is an AND
@@ -699,6 +736,11 @@ func parseBlock(lines []string, source, dir string, start int) (*Ask, error) {
 				return nil, fmt.Errorf("revisit: %q is not \"true\" (omit the header for the default)", v)
 			}
 			r.Revisit = true
+		case "always":
+			if strings.ToLower(v) != "true" {
+				return nil, fmt.Errorf("always: %q is not \"true\" (omit the header for the default)", v)
+			}
+			r.Always = true
 		case "name":
 			r.Name = v
 		case "cues":

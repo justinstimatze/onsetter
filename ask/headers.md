@@ -57,12 +57,12 @@ there means `~/.claude/projects/**/memory/feedback_*.md`; without the fix,
 memory file.
 
 
-## The fourteen headers
+## The fifteen headers
 
 Listed in the order `Match` applies them, which is the order `onsetter replay`
-reports a funnel in — except the last three. `revisit`, `name` and `cues` are
-never a reason a pending edit gets turned away; none of the three appears in
-that funnel at all.
+reports a funnel in — except the last four. `revisit`, `always`, `name` and
+`cues` are never a reason a pending edit gets turned away; none of the four
+appears in that funnel at all.
 
 | Header      | Matches                                   | Repeat means |
 |-------------|-------------------------------------------|--------------|
@@ -78,6 +78,7 @@ that funnel at all.
 | `when`      | the incoming text                         | AND          |
 | `evokes`    | the incoming text, fuzzily — not a regex  | OR           |
 | `revisit`   | nothing — widens the session key instead  | last wins    |
+| `always`    | nothing — skips the session key entirely  | last wins    |
 | `name`      | nothing — gives another ask something to cue | last wins |
 | `cues`      | nothing — fires a second ask by name      | cue each     |
 
@@ -143,7 +144,7 @@ not-in: **/*_test.go
 Use this, never `not:`, to exclude a path. `not:` is a content regex, so
 `not: _test\.go` matches nothing and the ask fires on the tests anyway.
 
-### `on:` — new file or existing file
+### `on:` — new file, existing file, or a Read
 
 ```
 on: mint
@@ -153,6 +154,35 @@ on: mint
 `any` is the default. Mint-only is the single most effective narrowing
 available: one ask that fired on every file in its corpus on content alone
 fired on 2.8% of them once it also required the file to be new.
+
+`any`, `mint`, and `edit` all mean "a pending `Write` or `Edit`." `read` is
+the fourth value, and it means the opposite: a `Read` tool call, never a
+pending write. No ask matches both kinds — an `on: read` ask never fires on
+a `Write` or `Edit`, and the other three never fire on a `Read`.
+
+```
+in: corpus/**
+on: read
+
+Never read the corpus directly before generating — query the index instead.
+```
+
+Two guardrails specific to this value:
+
+- **A `Read` call has no incoming text.** `when:`, `added:`, `removed:`,
+  `not:`, and `evokes:` all match against text a pending write carries — a
+  `Read` never has any, so combining `on: read` with any of them can never
+  fire. `onsetter lint` rejects the combination and names which gate is
+  dead. `has:` still works: it reads the file as it stands on disk, which a
+  `Read` call has just as much as a write does.
+- **`on: read` support has to be wired separately, and it isn't by
+  default.** `onsetter install` wires `Write`, `Edit`, and `Bash` — not
+  `Read` — because a `Read` happens far more often than a write in a typical
+  session, and unlike the other two, every `Read` pays the full `CLAUDE.md`
+  discovery walk. `onsetter install --read` wires it; `onsetter status`
+  reports plainly when an `on: read` ask exists with no `Read` wiring to
+  ever reach it, the same way it already catches an unwarmed `evokes:`
+  phrase or a missing `requires:` binary.
 
 ### `not:` — call it off
 
@@ -186,9 +216,21 @@ untouched: migrations/**
 Fires when you change one file and have not been near its partner this
 session. Globs resolve like `in:`.
 
-Its knowledge is only what onsetter saw. A file rewritten by a shell command
-never reaches a `PreToolUse` hook on Write or Edit, so it still counts as
-untouched and the ask fires anyway. Dismissible in a sentence, but real.
+Its knowledge is only what onsetter saw. A companion `PreToolUse` hook on
+`Bash`, wired by `onsetter install` alongside the main one, narrows this:
+it parses the command's actual shell syntax and marks a path touched when
+the command clearly writes to it — an output redirect (`>`, `>>`, `&>`,
+`&>>`), `tee`'s target, an in-place `sed -i` or `sd` (which rewrites in
+place by default), or `cp`/`mv`'s destination. It only trusts an argument
+that resolves to a plain literal at parse time — one built from a variable
+or command substitution contributes nothing, on purpose: a wrong guess here
+would wrongly suppress a real `untouched:` ask, which is worse than the miss
+it would replace. It never runs the command; it only reads its text.
+
+This narrows the gap, not closes it. A program invoked *by* the Bash call —
+`python generate.py`, `make`, a custom tool — writing files through its own
+logic stays invisible, the same as it always was. Dismissible in a sentence,
+but real.
 
 ### `added:` and `removed:` — the diff
 
@@ -261,25 +303,54 @@ of reasoning in comments, commit messages, or prose files; the regex headers
 above it already own code-shaped triggers precisely, and that division is
 not a style preference — it is where this header's signal actually lives.
 
-### `revisit:` — do not let a stale dismissal cover a new state
+### `revisit:` — retired
 
 ```
 when: TODO
 revisit: true
 ```
 
-Every other content-gated ask keys its once-per-session firing on the text it
-quoted back, described in full under **Lifetime** below. `revisit: true`
-widens that key to the quote plus the whole edit that produced it, so a later
-edit that reintroduces the identical string is a new question rather than one
-already answered — see **Lifetime** for what this changes and what it costs.
+`revisit: true` used to widen a matched ask's session key from the quote
+alone to the quote plus the whole edit that produced it, so a different
+occurrence sharing the same short quote wouldn't silently collapse into an
+already-answered question. That widening is what every matched ask does
+now, unconditionally — see **Lifetime** below. `revisit:` has nothing left
+to widen.
 
-Not a gate: it cannot make an ask fire or turn one away, so it never appears
-in a `replay` funnel. And it needs a quote to widen: pairing it with an ask
-that has nothing to quote back does nothing at all. That is `added:`,
-`removed:`, `when:`, or `evokes:` — not `has:`, which gates on the file as it
-stands but, like a path-only ask, never contributes to what gets quoted.
+The header still parses, so an existing `revisit: true` block does not
+suddenly fail to load — it just stops doing anything. `onsetter lint` flags
+it as redundant and names what replaced it; there's no reason to leave it
+in a block once lint says so, but nothing breaks if you do.
 
+### `always:` — skip the repeat count
+
+```
+in: corpus/**
+when: (?i)\bnever\b
+always: true
+```
+
+Every matched ask fires on every occurrence now and marks a repeat with a
+running count — see **Lifetime**. `always: true` opts a specific ask out of
+that count: it never checks the session store and never gets a marker, so
+every firing looks identical regardless of how many times it's already
+asked. For the *near-check* class this was built for — a corpus where every
+matching edit is suspect by construction, "never do X" over a directory
+where X is always worth a second look — that's usually what you want: the
+count is real information most of the time, and pure noise for an ask that
+expects to fire on nearly everything anyway.
+
+The injected line marks it, the same way a `cues:`-reached ask says `cued
+by`: `matched "never" · always`, replacing what would otherwise be an
+`(asked N× already this session)` count.
+
+On a no-content-gate ask (a reminder — nothing quoted, see **Lifetime**),
+`always:` means what it always has: skip the once-per-session suppression
+entirely and fire on every matching edit, not just the first. There's no
+count to skip there, since a reminder never gets one.
+
+Not a gate — Match never reads it, and `onsetter replay` never reports a
+rate for it.
 
 ### `name:` — a handle other asks can cue
 
@@ -314,7 +385,10 @@ block, **without checking that ask's own gate at all**. That is the entire
 point: it fires because it was cued, not because its own `in:`/`when:`/etc.
 also matched this edit. Every other gate on the cued ask is bypassed except
 `requires:`, which still has to resolve — a cued ask naming an uninstalled
-tool still shouldn't inject.
+tool still shouldn't inject. `on:` is one of the bypassed gates: an `on: any`
+ask can cue an `on: read` target, and the reverse, with no special handling
+— the cued ask's prose injects on whichever call reached its citer, `read`
+or otherwise.
 
 A cued firing never quotes anything, even if the target ask has its own
 `when:` or similar — there was never a match to quote. That makes a cued
@@ -354,6 +428,7 @@ gate — only a `cues:` from elsewhere can ever reach it.
 | an ask that only makes sense with a companion tool installed | `requires:` |
 | a topic or a shape of reasoning, not a fixed string | `evokes:`         |
 | one ask's prose should also pull in a second one    | `cues:` (with `name:` on the target) |
+| a corpus where every matching edit is suspect, not just the first | `always: true` |
 
 If a gate would need lookahead, split it across two `when:` lines. If it would
 need to exclude a directory, that is `not-in:`, not `not:`.
@@ -399,55 +474,78 @@ rejected it.
 
 ## Lifetime
 
-An ask asks each question once per session, and a question is the ask plus the
-text it quoted back.
+The two kinds of block get opposite treatment without either one declaring
+itself, and a question is the ask plus the text it quoted back.
 
-That means the two kinds of block get opposite treatment without either one
-declaring itself. A block with no content gate quotes nothing, so it fires once
-per session however many files it governs — it is a reminder, and repeating it
-is noise. A block with a `when:`, `added:`, `removed:` or `evokes:` keys on
-what it matched, so a new match asks again and a repeat of the same match
-stays quiet. `has:` gates on the file as it stands but never contributes a
-quote, so a `has:`-only block is a reminder too. Its ceiling is set by its own
-pattern: an ask can fire at most once per
-distinct string its regex can match, so twenty alternatives means at most
-twenty questions.
+A block with no content gate quotes nothing — it's a reminder, and it fires
+once per session however many files it governs, then stays quiet: a second
+firing would be the literal same sentence, with nothing new in it. `has:`
+gates on the file as it stands but never contributes a quote either, so a
+`has:`-only block is a reminder too. So is a firing reached through
+`cues:` — a cued hit never checks its own gate, so it never has anything to
+quote, whatever the target ask's own `when:` might otherwise have matched.
 
-If a content-gated ask only ever fires once, its pattern is matching a property
-of the file type rather than a signal that something changed. That is worth
-knowing — see the funnel note under **Before you wire it**.
+A block with a `when:`, `added:`, `removed:` or `evokes:` is different: it
+always fires, on every occurrence, for the whole session. What used to be a
+session-suppression key (the ask, the quote, and — with `revisit: true` — the
+edit that produced it) is now purely a *repeat counter*: the same occurrence
+firing again gets marked, `matched "TODO" (asked 2× already this session)`,
+instead of going quiet. An occurrence is the quote *and* the edit around it —
+"you nod" in one file and "you nod" in an unrelated one are different
+occurrences and both fire on their own first sighting, unmarked; the same
+edit repeated byte-for-byte is the same occurrence and its count keeps
+climbing rather than resetting.
 
-That default is right for most asks: the quote is the question, and a repeat
-of the same quote has already been answered. It is wrong for one still true —
-an unresolved TODO an ask flagged once, still sitting there five edits later
-to the same file, reads as already-answered because the string never changed,
-even though the agent has had five more chances to deal with it and has not.
-`revisit: true` says this ask's question is not "have you seen this exact
-string" but "is this still here", and widens its key from the quote alone to
-the quote plus the edit that produced it — so touching the file again with
-the same violation still present asks again, and only a genuine no-op re-edit
-(byte-identical to one already asked about) stays quiet.
+That's a real change from every earlier release, not a tightening of the old
+default: the old key hashed the quote alone, so two different occurrences
+sharing a short match collapsed into one already-answered question and the
+second one went silently quiet. Nothing measurable distinguishes an ask that
+changed an edit from one that was skimmed and ignored — this package has
+never trusted a decay model built on that guess — and treating "already
+fired once" as "already handled" was exactly that guess, just an invisible
+one. Counting instead of suppressing hands the actual judgment call — is a
+repeat worth a fresh look, or the same answer as last time — to the one
+thing in this loop suited to make it: the model reading the marker, not a
+session file that can't tell those two cases apart.
 
-The idea is [treadiehq/codecut](https://github.com/treadiehq/codecut)'s: its
-`verification-evidence` rule keys a passing test to the diff fingerprint it
-actually ran against, so a stale pass from before the last edit does not
-count. Onsetter never sees a test run — only the `Write`/`Edit` it already
-watches — so this is that idea's narrower shadow: fingerprinting the edit
-rather than a verification event, because an edit is the only state onsetter
-has.
+One invariant this changes: a reminder still has a ceiling of exactly one
+firing per session, since it has only ever had one possible key. A matched
+ask no longer does — "an ask can fire at most once per distinct string its
+regex can match" was true when the key was the string alone; now the key
+includes the edit, so the same string recurring in twenty different edits is
+twenty occurrences, not one. The ceiling that's left is authored by the
+corpus, not the pattern: how many times a real edit will ever contain a
+match, which `replay` still measures as a rate, just no longer one a session
+key could distort.
 
-Turning it on changes every deployed ask's identity, `revisit: true` or not:
-`ID()` now folds the header in, so this release re-arms every ask once per
-in-flight session, the one-time cost the v0.3.0 key-format change also paid.
+`always: true` opts a matched ask out of the counter entirely — every firing
+looks identical, `matched "TODO" · always`, no matter how many times it's
+already asked. Right for the near-check class this exists for: a corpus
+where every matching edit is already expected to be suspect, where a
+running count would just be noise. On a reminder, `always:` means what it
+always has — skip the once-per-session suppression and fire on every file,
+not just the first; there's no counter there to opt out of.
 
-`cues:` paid that same one-time cost when it shipped, for the same reason:
-`ID()` folds the `cues:` list in (so a freshly wired cue gets a chance to
-walk a session where the citer already fired once), but leaves `name:` out
-of the hash entirely — renaming an ask to fix a collision, or just to make
-its cue wiring read better, should not re-arm every already-answered
-session instance of it. A cued firing's own key never carries `revisit:`
-either way: it never quotes anything, so there is nothing for `revisit:` to
-widen.
+`revisit:` is retired — its whole job was widening the key past the bare
+quote, and that widening is unconditional now. It still parses, so an
+existing block doesn't go dark; `onsetter lint` flags it as redundant.
+
+The idea that a repeat still worth a fresh look, rather than the same
+answered question, is [treadiehq/codecut](https://github.com/treadiehq/codecut)'s
+`verification-evidence` rule: it keys a passing test to the diff fingerprint
+it actually ran against, so a stale pass from before the last edit doesn't
+count. Onsetter never sees a test run — only the `Write`/`Edit`/`Read` it
+already watches — so this is that idea's narrower shadow: fingerprinting the
+edit rather than a verification event, because an edit is the only state
+onsetter has.
+
+This release re-arms every deployed ask once per in-flight session, whether
+or not it ever used `revisit:` — `ID()`'s hash shape changed, not just one
+header's contribution to it — the same one-time cost the v0.3.0 key-format
+change, and `cues:`'s own release, both already paid. `cues:` still leaves
+`name:` out of the hash entirely — renaming an ask to fix a collision, or
+just to make its cue wiring read better, should not re-arm every
+already-answered session instance of it.
 
 Identity is a hash of the gate and the body, not the line number, so inserting
 a paragraph above an ask changes nothing and editing its prose re-arms it. To

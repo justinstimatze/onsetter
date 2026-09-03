@@ -21,6 +21,21 @@ and `$PATH` is not consulted at all, so `requires:` can also report whether
 an arbitrary file on disk exists and is executable. Either way this is a
 stat and a permission check — `exec.LookPath` — never an execution.
 
+A `Bash` call is also read, by the touch-observer `onsetter install` wires
+alongside the main hook: its `command` text, parsed with a real shell
+grammar ([`mvdan.cc/sh`](https://github.com/mvdan/sh), the parser behind
+`shfmt`) purely to find the paths it looks like it writes to, for
+`untouched:`'s benefit. That parser only ever builds a syntax tree from the
+text — it does not execute the command, look at its output, or know whether
+it ran at all.
+
+With `onsetter install --read`, a second, opt-in wiring, it also reads the
+path of every file the model reads via `Read` — not the file's content,
+only the path (an `on: read` ask's `has:`, if it has one, is what reads the
+file, the same as it already does for a pending write). This is strictly
+less than what a `Write`/`Edit` call already hands it, which includes the
+pending content.
+
 **What it sends.** Only when an ask sets `evokes:`, and only to Ollama on
 `localhost:11434` — the edit's content, sent to get back an embedding vector,
 never to any address that isn't loopback. Nothing about the request or the
@@ -28,9 +43,14 @@ response leaves the machine, and a failure of any kind (Ollama not running,
 the request timing out) makes the `evokes:` ask not fire; it never blocks the
 edit or surfaces an error to the model.
 
-**What it writes.** One file per session under `~/.cache/onsetter/sessions/`,
-holding rule-identity hashes and nothing else — no paths, no file contents, no
-prompt text. `onsetter install` writes `~/.claude/settings.local.json` and
+**What it writes.** Two files per session under `~/.cache/onsetter/sessions/`:
+one holding rule-identity hashes and how many times each has fired, and a
+`.paths` sidecar holding the absolute
+path of every file `Write`, `Edit`, or the `Bash` touch-observer has seen
+written this session — no file contents, no prompt text, no shell command
+text, just the paths themselves, kept only so `untouched:` can answer "was
+this file's counterpart touched." `onsetter install` writes
+`~/.claude/settings.local.json` and
 leaves a timestamped backup beside it. `onsetter warm` writes
 `~/.cache/onsetter/embeddings.json`: the literal text of every `evokes:`
 phrase in your `CLAUDE.md` files, plus its embedding vector — never edit

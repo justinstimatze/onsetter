@@ -56,8 +56,11 @@ const usage = `onsetter — asks that arrive at the edit, not at session start.
 
   onsetter hook              PreToolUse dispatcher; reads the pending call on
                              stdin. This is the only thing settings.json runs.
-  onsetter install           Wire the hook into ~/.claude/settings.local.json
+  onsetter install [--read]  Wire the hook into ~/.claude/settings.local.json
                              and write the authoring skill. Re-running converges.
+                             --read also wires Read, for on: read asks — every
+                             read pays a process spawn, so it's opt-in, and a
+                             plain re-install (no --read) drops it again.
   onsetter list [path]       Asks governing a path, and whether each would
                              fire against the file as it stands.
   onsetter replay <glob>...  Fire rate of every ask against a corpus. Run this
@@ -90,8 +93,8 @@ An ask is a fenced block in any CLAUDE.md:
 
 Headers, one blank line, then the prose. Every header is optional, and they
 apply in this order — which is the order ` + "`replay`" + ` reports a funnel in,
-except the last three: ` + "`revisit`" + `, ` + "`name`" + ` and ` + "`cues`" + `
-never gate, so none of the three ever appears there.
+except the last four: ` + "`revisit`" + `, ` + "`always`" + `, ` + "`name`" + ` and ` + "`cues`" + `
+never gate, so none of the four ever appears there.
 
   requires   a binary resolving on $PATH — a fact about the machine, not the file
   in         glob, relative to this CLAUDE.md's directory  (default: all below)
@@ -104,7 +107,8 @@ never gate, so none of the three ever appears there.
   removed    regex against the lines this edit deletes
   when       regex against the incoming text
   evokes     a fuzzy trigger phrase, not a regex — fires on any one, not all
-  revisit    true — widens the session key to the whole edit, not just the quote
+  revisit    true — retired; every matched ask always widens now, lint flags it
+  always     true — skips the repeat count on a match, or the once-per-session cap on a reminder
   name       a handle another ask's cues: can point at
   cues       fires a second, named ask in the same injection, gate unchecked
 

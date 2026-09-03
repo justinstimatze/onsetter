@@ -20,6 +20,21 @@ import (
 // not, and its whole hook set sat dark for months while the install target
 // exited 0. An install that does not write the settings is not an install.
 func cmdInstall(args []string) error {
+	// --read is the one flag install takes: it additionally wires a second
+	// PreToolUse entry, matcher "Read", pointing at the same binary. Stripped
+	// out here so it never collides with the positional settings-path
+	// override every other caller already relies on.
+	withRead := false
+	rest := args[:0]
+	for _, a := range args {
+		if a == "--read" {
+			withRead = true
+			continue
+		}
+		rest = append(rest, a)
+	}
+	args = rest
+
 	settings := filepath.Join(os.Getenv("HOME"), ".claude", "settings.local.json")
 	if v := os.Getenv("CLAUDE_SETTINGS"); v != "" {
 		settings = v
@@ -88,9 +103,21 @@ func cmdInstall(args []string) error {
 	}
 
 	kept = append(kept, map[string]any{
-		"matcher": "Write|Edit",
+		"matcher": "Write|Edit|Bash",
 		"hooks":   []any{map[string]any{"type": "command", "command": command}},
 	})
+	// Read is opt-in, not bundled into the default matcher: unlike Bash,
+	// discover.Asks runs its full CLAUDE.md tree walk on every Read call —
+	// wiring it unconditionally would tax every install, forever, for a
+	// header most repos never use. Re-running install without --read drops
+	// this entry, the same convergence behavior the base entry already has:
+	// the flags a given run passes are the whole desired state.
+	if withRead {
+		kept = append(kept, map[string]any{
+			"matcher": "Read",
+			"hooks":   []any{map[string]any{"type": "command", "command": command}},
+		})
+	}
 	hooks["PreToolUse"] = kept
 	root["hooks"] = hooks
 
@@ -114,6 +141,11 @@ func cmdInstall(args []string) error {
 	fmt.Printf("  wired %s\n", shortOne(settings))
 	fmt.Printf("  command: %s\n", command)
 	fmt.Printf("  skill:   %s\n", shortOne(skill))
+	if withRead {
+		fmt.Printf("  also wired: Read — every Read call now runs onsetter too,\n")
+		fmt.Printf("  not just Write and Edit. Costs one process spawn per read;\n")
+		fmt.Printf("  re-run without --read to drop it.\n")
+	}
 	fmt.Printf("\n  Open /hooks once in Claude Code to reload the settings watcher.\n")
 	fmt.Printf("  Hook settings are read per session — a session already running\n")
 	fmt.Printf("  will not pick this up.\n")

@@ -215,6 +215,51 @@ func TestStatusExitsZeroWithAValidCue(t *testing.T) {
 	}
 }
 
+// The sixth silent-failure mode: an on: read ask with no Read wiring to
+// ever reach it. install (no --read) leaves the ask unreachable, and
+// status should say so rather than exit 0 over a dead ask.
+func TestStatusReportsOnReadAskWithReadUnwired(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"), "```ask\non: read\n\nNever read the corpus directly.\n```\n")
+	settings := filepath.Join(t.TempDir(), "settings.local.json")
+
+	if out, err := runStatus(t, bin, repo, settings, t.TempDir(), "install", settings); err != nil {
+		t.Fatalf("install: %v\n%s", err, out)
+	}
+
+	out, err := runStatus(t, bin, repo, settings, t.TempDir(), "status", ".")
+	if err == nil {
+		t.Fatal("want a non-zero exit: on: read has no Read wiring to ever reach it")
+	}
+	if !strings.Contains(out, "UNREACHABLE") || !strings.Contains(out, "on: read") ||
+		!strings.Contains(out, "install --read") {
+		t.Errorf("status did not report the unreachable on: read ask:\n%s", out)
+	}
+}
+
+// Wiring Read with --read clears the same report.
+func TestStatusClearsOnReadReportWhenReadIsWired(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"), "```ask\non: read\n\nNever read the corpus directly.\n```\n")
+	settings := filepath.Join(t.TempDir(), "settings.local.json")
+
+	if out, err := runStatus(t, bin, repo, settings, t.TempDir(), "install", "--read", settings); err != nil {
+		t.Fatalf("install --read: %v\n%s", err, out)
+	}
+
+	out, err := runStatus(t, bin, repo, settings, t.TempDir(), "status", ".")
+	if err != nil {
+		t.Fatalf("want exit 0 once Read is wired:\n%v\n%s", err, out)
+	}
+	if !strings.Contains(out, "Read is wired") {
+		t.Errorf("status did not confirm Read is wired:\n%s", out)
+	}
+}
+
 func TestStatusExitsZeroWhenEverythingIsFine(t *testing.T) {
 	bin := buildBinary(t)
 	repo := t.TempDir()

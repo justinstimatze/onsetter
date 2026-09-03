@@ -54,7 +54,7 @@ against the path and the incoming text, and prepends the ones that hit. Before
 the write lands, Claude receives this:
 
 ```
-onsetter — 1 ask for this edit. Each question is asked once per session.
+onsetter — 1 ask for this edit. A repeat is marked, not hidden.
 
 ▸ corpus/CLAUDE.md:55 · matched "description"
 How would the player know this? Any name, relationship, motive, date, or
@@ -71,7 +71,8 @@ To retire one, delete its block from the file named above.
 
 That is the whole product. Adding an ask is writing a paragraph in a file you
 already have. There is nothing to install per ask and no second source of
-truth. Each question is asked once, then goes quiet. To be rid of it,
+truth. It fires on every occurrence, marking a repeat instead of hiding it —
+see [Design](#design) for what that means and why. To be rid of it,
 delete the block.
 
 ## The failure it answers
@@ -225,7 +226,7 @@ order `replay` reports a funnel in:
 | `requires` | a binary resolving on `$PATH` — a fact about the machine, not the file | none |
 | `in` | the path — glob relative to **this** `CLAUDE.md`'s directory. `**`, `{a,b}`, `?`, `[...]` | everything below the file |
 | `not-in` | the path — excludes something `in` would have matched | none |
-| `on` | `any`, `mint` (the file does not exist yet), or `edit` | `any` |
+| `on` | `any`, `mint` (the file does not exist yet), `edit`, or `read` (a Read call, never a write) | `any` |
 | `not` | the incoming text — suppresses the ask | none |
 | `has` | the file as it stands, ignoring the edit | — |
 | `untouched` | glob — no file matching it was written this session | — |
@@ -233,16 +234,27 @@ order `replay` reports a funnel in:
 | `removed` | only the lines this edit deletes | — |
 | `when` | the incoming text. `(?i)` for case-insensitive | any content |
 | `evokes` | the incoming text, semantically — not a regex | none |
-| `revisit` | nothing — widens the session key to the whole edit, not just the quote | `false` |
+| `revisit` | nothing — retired, parses but does nothing; `lint` flags it | `false` |
+| `always` | nothing — skips the repeat count on a matched ask, or the once-per-session suppression on a reminder | `false` |
 | `name` | nothing — gives another ask something to cue | none |
 | `cues` | nothing — fires a second, named ask in the same injection | none |
 
-The last three never gate — none of them can turn a pending edit away, and
+The last four never gate — none of them can turn a pending edit away, and
 none appears in `replay`'s funnel.
 
 `when` and `not` see `content` on a Write and `new_string` on an Edit — the
 replacement span, not the whole file. Repeat `when`, `added`, `removed`,
 `has`, or `requires` for an AND; repeat `not` for an OR of suppressors.
+
+`any`, `mint`, and `edit` all mean "a pending Write or Edit." `on: read` is
+the opposite — a Read call, never a write — so it can never be paired with
+`when`, `added`, `removed`, `not`, or `evokes`: none of those ever see
+incoming text on a Read, and `onsetter lint` rejects the combination. `has`
+still works, since it reads disk content either way. `on: read` support also
+isn't wired by default: `onsetter install --read` adds it, because a Read
+happens far more often than a write and pays the full discovery walk each
+time — `onsetter status` flags an `on: read` ask sitting unreachable if you
+forget.
 
 `requires` is checked before every other header — it is a fact about the
 machine running onsetter, not the file or the edit, so a rejection on a
@@ -258,6 +270,12 @@ already know, because the reader who needs it is usually an agent mid-task.
 Use `not-in` and never `not` to exclude a path: `not` is a content regex, so
 `not: _test\.go` silently matches nothing, which had one ask firing on nearly
 twice the files the script it replaced did.
+
+The same silent-nothing trap catches a leading `./` on `in:`. The path onsetter
+matches against comes from `filepath.Rel`, which never carries one, so
+`in: ./cmd/**/*.go` matches no file `in: cmd/**/*.go` wouldn't already match on
+its own — write the glob relative to the CLAUDE.md's own directory with no
+leading `./`.
 
 `added` and `removed` come from a real line diff of `old_string` against
 `new_string`, so an edit that replaces a span already containing the pattern
@@ -291,11 +309,17 @@ column backfilled somewhere, or does this ship a table the running code cannot
 read? If the migration is already merged, continue.
 ```
 
-It knows only what onsetter saw go past. A file rewritten by a shell command
-never reaches a `PreToolUse` hook on Write or Edit, so it still counts as
-untouched and the ask fires anyway — dismissible in a sentence, but worth
-knowing before you write one. The path in hand is recorded *after* matching, so
-an edit never satisfies an `untouched:` gate about itself.
+It knows only what onsetter saw go past. `onsetter install` also wires a
+`Bash` observer alongside the main hook: it parses the command's actual
+shell syntax and marks a path touched when the command clearly writes to
+it — a redirect, `tee`, an in-place `sed`/`sd`, or `cp`/`mv`'s destination —
+trusting only arguments that resolve to a plain literal, never a guess at
+what a variable or command substitution might produce. It never runs
+anything; it only reads the command text. This narrows the gap rather than
+closing it: a program invoked *by* the Bash call, writing files through its
+own logic, is still invisible — dismissible in a sentence, but worth knowing
+before you write one. The path in hand is recorded *after* matching, so an
+edit never satisfies an `untouched:` gate about itself.
 
 `evokes` is the one header that isn't a regex or a glob — it's a fuzzy trigger
 phrase, and repeating it is an OR (fires on any one), not the AND every other
@@ -376,6 +400,27 @@ other no-content-gate ask, and it can only ever reach a `name:` declared in a
 — never one nested below it. A cycle or a diamond of cues is safe: each ask
 is visited at most once per edit. `onsetter headers` has the full mechanics
 and the one real gotcha (the ancestor-scope rule above).
+
+A matched ask already fires on every occurrence — `always` is for opting out
+of the *count* that marks a repeat, for a corpus where every matching edit is
+already suspect by construction and a running "asked 4× already" number
+would just be noise.
+
+```ask
+in: corpus/**
+when: (?i)\bnever\b
+always: true
+
+Every matching edit here is worth a second look, not just the first one.
+```
+
+Without `always:`, this ask would fire on every match too — that's the
+default now — just with an `(asked N× already this session)` marker once a
+given occurrence recurs. `always:` keeps every firing looking identical
+instead. Width still costs here, more than most other asks: an unnarrowed
+one is one of the loudest injections this format can produce, marked or
+not, with no once-per-session amortization to fall back on for the matched
+class at all anymore.
 
 Most blocks are one header and a paragraph. An ask in `corpus/CLAUDE.md` with
 no `in:` governs everything under `corpus/`, which is the scope its author can
@@ -544,7 +589,7 @@ guarantee.
 
 ```
 onsetter hook              the dispatcher; the only thing settings.json runs
-onsetter install           wire ~/.claude/settings.local.json, write the skill
+onsetter install [--read]  wire ~/.claude/settings.local.json, write the skill
 onsetter list [path]       what governs this path, and what would fire now
 onsetter replay <glob>...  fire rate of every ask against a corpus
 onsetter lint [dir]        parse every block; refuse the ones that say nothing
@@ -572,7 +617,7 @@ $ onsetter list corpus/locations/quamash_1962/creek_bridge.json
 ```
 
 It also answers the harder question, which is why an ask you just wrote is
-*not* firing. There are fourteen headers, and the one that rejected gets marked
+*not* firing. There are fifteen headers, and the one that rejected gets marked
 — unless a `cues:` from elsewhere reached it anyway, in which case `list`
 says so instead:
 
@@ -592,26 +637,38 @@ Without the marker the loop is delete a header, rebuild, rerun, repeat.
 
 ## Design
 
-**Ask each question once per session, where the question is the ask plus the
-text it quoted.** State lives in `~/.cache/onsetter/sessions/<session_id>`. A
-question you have already answered is noise the second time, and noise is how
-you teach someone to scroll past the block without reading it.
+**A matched ask always fires, and marks a repeat instead of hiding it.**
+State lives in `~/.cache/onsetter/sessions/<session_id>`. Two kinds of block
+live in this format and want opposite treatment, and neither has to declare
+which it is. A block with no content gate is a reminder — you need to know
+the standard exists, and once you do, saying the identical sentence again is
+noise. It quotes nothing, so it fires once per session across every file it
+governs, then stays quiet. A block with a content gate is an inspection —
+*is this narrator overreach* is a different question about `you nod` in one
+file than the same three words in another — and it fires on every
+occurrence, forever, marked `(asked 2× already this session)` once it's
+recurred. An occurrence is the quote *and* the edit around it, not the quote
+alone: two edits sharing a short match are two different questions, and a
+byte-identical repeat of the same edit is still the same occurrence, still
+worth a fresh count.
 
-Two kinds of block live in this format and want opposite treatment, and neither
-has to declare which it is. A block with no content gate is a reminder — you
-need to know the standard exists, and once you do, saying it again is noise. It
-quotes nothing, so it fires once per session across every file it governs. A
-block with a content gate is an inspection, and *is this narrator overreach* is
-a different question about `you nod` than about `you find yourself`. It keys on
-the quote, so a new match asks again and the same match a second time stays
-quiet. Gating on content is the declaration; there is no header for this.
+That's not the tightened version of "once per session" — it's the opposite
+of it, and it wasn't the original design. The old key hashed the quote
+alone, so two unrelated occurrences sharing a short match silently collapsed
+into one already-answered question. Nothing measurable distinguishes an ask
+that changed an edit from one that was skimmed and ignored — see "no decay
+model" below — and treating "already fired once" as "already handled" was
+exactly that unverifiable guess, just an invisible one. Counting instead of
+suppressing hands the actual judgment call to the thing suited to make it:
+whoever's reading the marker, not a session file that can't tell a genuine
+repeat from a different occurrence that happens to look similar.
 
-The ceiling comes from the pattern rather than from a policy. An ask fires at
-most once per distinct string its own regex can match, so an author who wrote
-twenty alternatives has already said those are twenty things worth being asked
-about. And a content-gated ask that only ever fires once is telling you its
-`when:` matches a property of the file type rather than a signal that something
-changed.
+`always: true` opts a matched ask out of the count entirely, for the case
+where every firing is expected to look the same — a corpus where every
+matching edit is already suspect by construction, where a running number
+would be pure noise. Gating on content and adding `always:` are both
+declarations; there is no header for the once-per-session reminder default,
+since that's what having nothing to quote already means.
 
 Ask identity underneath is a hash of the gate and the prose, so inserting a
 paragraph above an ask does not re-fire everything below it.
@@ -648,8 +705,11 @@ for no measurable gain.
 
 Anything a linter already does, because that is free and this costs attention.
 Anything that has to block, because it only ever advises. And any ask whose
-honest answer is always yes, which becomes wallpaper and teaches you to skip
-the block — including the next one, which was not wallpaper.
+honest answer is always yes — a matched ask fires on every occurrence now,
+so a poorly narrowed one is pure wallpaper, not an occasional repeat; `replay`
+exists specifically to catch this before it's wired, and its own warning
+("a gate tripping on more than a few percent of what it matches is a tax")
+is about exactly this cost.
 
 ## Where it sits
 

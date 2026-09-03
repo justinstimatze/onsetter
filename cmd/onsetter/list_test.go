@@ -67,3 +67,25 @@ func TestListReportsACuedAskAsWouldFire(t *testing.T) {
 		t.Errorf("the cued ask should not read as would not fire:\n%s", got)
 	}
 }
+
+// An on: read ask needs a Read-shaped edit, not the write-shaped one list
+// simulates by default — left unchanged, it would always misreport as
+// "turned away at on: read" against a real file that a Read call would
+// actually reach.
+func TestListReportsAnOnReadAskAsWouldFire(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"),
+		"```ask\nin: corpus/**\non: read\n\nNever read the corpus directly.\n```\n")
+	mkdir(t, filepath.Join(repo, "corpus"))
+	write(t, filepath.Join(repo, "corpus", "a.md"), "some corpus text")
+
+	got := listIn(t, bin, repo, "corpus/a.md")
+	if !strings.Contains(got, "would fire") {
+		t.Errorf("on: read should report as would fire against a real file:\n%s", got)
+	}
+	if strings.Contains(got, "would not fire") {
+		t.Errorf("on: read misreported as would not fire:\n%s", got)
+	}
+}

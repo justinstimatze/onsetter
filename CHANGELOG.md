@@ -1,5 +1,119 @@
 # Changelog
 
+## v0.8.0 — 2026-09-02
+
+Three features from a sibling session's feedback on real onsetter usage,
+plus a breaking change — the first in this project's history — that grew
+out of reviewing the first of the three.
+
+- **Breaking: a matched ask now always fires.** A matched ask
+  (`when:`/`added:`/`removed:`/`evokes:`) fires on every occurrence, for
+  the whole session, instead of going quiet after the first sighting —
+  marked `(asked N× already this session)` once a given occurrence
+  recurs. An occurrence is the quote plus the edit around it, not the
+  quote alone: `"you nod"` in `betty.md` and `"you nod"` in
+  `art_callahan.md` are two different occurrences and both fire on their
+  own first sighting, unmarked; the same edit repeated byte-for-byte is
+  the same occurrence and its count keeps climbing instead of staying
+  silent. A reminder (no content gate), a `has:`-only block, and a
+  `cues:`-reached firing are all unchanged: none of them ever had
+  anything to quote, so none of them get a count, and all three still
+  fire once per session then go quiet.
+  This closes a real bug, not just a stance change: the old session key
+  hashed the ask ID and the matched substring alone — no file, no edit —
+  so two genuinely unrelated occurrences sharing a short match (the "you
+  nod" example above, for real) silently collapsed into one
+  already-answered question and the second one went quiet with nothing to
+  show for it. The fix hands the actual judgment call — is a repeat worth
+  a fresh look, or the same answer as last time — to whoever's reading the
+  marker, instead of a session file that couldn't tell those two cases
+  apart.
+  New header `always: true` opts a matched ask out of the marker entirely
+  — every firing looks identical, for a near-check corpus where every
+  matching edit is already expected to be suspect and a running count
+  would be noise. On a reminder, `always:` means what a plain
+  once-per-session default can't: bypass that suppression and fire on
+  every matching file, not just the first.
+  `revisit: true` is retired: its whole job was widening the session key
+  from the quote alone to the quote plus the edit, which is unconditional
+  now. It still parses, so an existing `revisit: true` block does not go
+  dark — `onsetter lint` flags it as redundant and names what replaced it,
+  informational, not fatal.
+  `internal/session`'s on-disk format moves from one bare key per line to
+  `key:count`. Self-healing: a session file written before this release
+  fails to parse as the new format and that session starts counting
+  fresh, the same fail-soft shape this package already used everywhere
+  else — nothing to migrate, and the existing 14-day sweep already clears
+  old session files regardless.
+  Prompted by feedback from a sibling session building a repo template on
+  onsetter's asks, which named the gap directly: the once-per-session
+  default has no header for "no session memory at all," for a near-check
+  class of ask where every edit to a corpus is suspect.
+- `onsetter install` now also wires a `PreToolUse` observer on `Bash`,
+  narrowing `untouched:`'s biggest known blind spot: a file rewritten by a
+  shell command — `sed -i`, a heredoc, `tee` — used to read as untouched
+  forever, no matter how it was rewritten. The observer parses the
+  command's actual shell syntax with a real parser
+  ([`mvdan.cc/sh`](https://github.com/mvdan/sh), the parser behind
+  `shfmt`) and marks a path touched when the command clearly writes to it:
+  an output redirect (`>`, `>>`, `&>`, `&>>`), `tee`'s target(s), an
+  in-place `sed -i`/`sd` (which rewrites in place by default), or
+  `cp`/`mv`'s destination. It trusts only an argument that resolves to a
+  plain literal at parse time — a path built from a shell variable or a
+  command substitution contributes nothing rather than a guess, since a
+  wrong guess here would wrongly suppress a real `untouched:` ask, which is
+  worse than the miss it replaces. `cp`/`mv`'s destination is the one
+  position where an earlier unresolved argument (a variable source, the
+  common shape) doesn't block it: the destination's position is fixed
+  regardless of what the source resolves to. `sed`/`sd` need every argument
+  to resolve, since the flag/expression/files boundary depends on all of
+  them together, not on one fixed position. This is bookkeeping only — no
+  ask fires from a `Bash` call, and the default matcher's cost past the one
+  extra process spawn stays small: no `CLAUDE.md` tree walk, no parsing,
+  the same as it was before for everything but `Write`/`Edit`.
+  This narrows the gap; it does not close it. A program invoked *by* the
+  Bash call — `python generate.py`, `make`, a custom tool — writing files
+  through its own logic is still invisible, same as always.
+  `SECURITY.md`'s "What it writes" section also gets a standing correction
+  here, independent of this feature: it claimed the session store held "no
+  paths," which was already false — the `.paths` sidecar `untouched:` has
+  always used already holds one absolute path per line.
+  Prompted by the same sibling-session feedback, which named the specific
+  harness shape that trips it: an agent told to prefer Bash (`sed`,
+  heredocs, short scripts) over the dedicated Write/Edit tools for file
+  changes.
+- New `on:` value: `read`. Every ask before this only ever saw a pending
+  `Write` or `Edit`; `on: read` reacts to a `Read` tool call instead — the
+  motivating case was "never read the corpus directly before generating,"
+  a rule about a read, not a write. `on:` is a strict four-way partition
+  now: `any`/`mint`/`edit` only ever match a Write or Edit, `read` only
+  ever matches a Read, and no ask matches both kinds. `Edit` gained a
+  fourth field, `IsRead bool`, defaulting to `false`, so every existing
+  caller of the `ask` package — every construction site in this repo is
+  already keyed, `ask_external_test.go`'s included — keeps compiling and
+  behaving exactly as it does today.
+  A Read call carries no incoming text, so `when:`/`added:`/`removed:`/
+  `not:`/`evokes:` can never match one; `onsetter lint` now rejects `on:
+  read` combined with any of them, naming the dead gate. `has:` still
+  works, since it reads disk content either way. `cues:` already bypasses
+  every gate but `requires:` for a cued target, so an `on: any` ask can cue
+  an `on: read` one and the reverse, with no code change.
+  A Read never marks its path touched, and never satisfies an `untouched:`
+  gate — reading a file is not writing it. `cmdList`/`cmdReplay` build a
+  second, Read-shaped synthetic edit and use it for any `on: read` ask,
+  the same honesty bar `cues:` set for a cue-only ask: left write-shaped,
+  every `on: read` ask would misreport as permanently dead.
+  Wiring is opt-in: `onsetter install --read` adds a second `PreToolUse`
+  entry, matcher `Read`, alongside the default `Write|Edit|Bash` one — not
+  bundled into the default, because a Read happens far more often than a
+  write in a typical session and, unlike the Bash observer, still runs the
+  full `CLAUDE.md` discovery walk on every call. A plain re-install without
+  `--read` drops the entry again, the same convergence behavior the base
+  entry already has. `onsetter status` gained a sixth check: an `on: read`
+  ask defined with no `Read` wiring to ever reach it now reports plainly,
+  the same shape as an unwarmed `evokes:` phrase or a missing `requires:`
+  binary — a silent dead ask instead of a firing that never happens.
+
 ## v0.7.0 — 2026-08-29
 
 - New headers: `name:` and `cues:`. A fired ask can now cue a second, named
