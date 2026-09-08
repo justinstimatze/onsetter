@@ -7,3 +7,4 @@
 # fetched from the same mutable release as the binary it verifies, isn't
 # enough on its own. A version with no line here is refused, not trusted
 # unpinned.
+0.9.0 d833eb357eca9464826daed64739c0f24fe0a57c13b25467986f755b315787f1
