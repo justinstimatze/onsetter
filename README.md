@@ -22,7 +22,7 @@ line had ever checked it was there.
 
 "It's just for local testing," they said, hopefully.
 
-It was not just for local testing. It shipped.
+It was not just for local testing.
 
 ---
 
