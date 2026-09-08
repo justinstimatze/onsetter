@@ -129,8 +129,8 @@ out of reviewing the first of the three.
   (`when:`/`added:`/`removed:`/`evokes:`) fires on every occurrence, for
   the whole session, instead of going quiet after the first sighting —
   marked `(asked N× already this session)` once a given occurrence
-  recurs. An occurrence is the quote plus the edit around it, not the
-  quote alone: `"you nod"` in `betty.md` and `"you nod"` in
+  recurs. An occurrence is the quote together with the edit around it:
+  `"you nod"` in `betty.md` and `"you nod"` in
   `art_callahan.md` are two different occurrences and both fire on their
   own first sighting, unmarked; the same edit repeated byte-for-byte is
   the same occurrence and its count keeps climbing instead of staying
@@ -204,7 +204,7 @@ out of reviewing the first of the three.
 - New `on:` value: `read`. Every ask before this only ever saw a pending
   `Write` or `Edit`; `on: read` reacts to a `Read` tool call instead — the
   motivating case was "never read the corpus directly before generating,"
-  a rule about a read, not a write. `on:` is a strict four-way partition
+  a rule about a read rather than a write. `on:` is a strict four-way partition
   now: `any`/`mint`/`edit` only ever match a Write or Edit, `read` only
   ever matches a Read, and no ask matches both kinds. `Edit` gained a
   fourth field, `IsRead bool`, defaulting to `false`, so every existing
@@ -347,7 +347,7 @@ out of reviewing the first of the three.
   ground truth. Reports the weakest true positive against the strongest
   false-positive risk from an author-supplied labeled example set, and says
   plainly when the two overlap: no threshold separates them, and the fix is
-  rewording the phrases, not the number. Built after a cross-project
+  rewording the phrases rather than changing the number. Built after a cross-project
   exchange showed a threshold measured against a handful of hand-picked
   pairs does not reliably generalize even to an adjacent matching regime.
 
@@ -372,8 +372,8 @@ pick up the skill; the hook entry it rewrites is the one it already wrote.
   replay cannot measure, and why a wide gate costs more since v0.3.0.
 
   Regenerated on every install rather than merged, and a test asserts a
-  hand-edit does not survive one. Adding a header is now four places, not
-  three — the fourth is the header list in the skill's frontmatter, which is
+  hand-edit does not survive one. Adding a header now touches four places, up
+  from three — the fourth is the header list in the skill's frontmatter, which is
   the entire retrieval surface, so a header missing there is a header whose
   questions never reach the guide. The test names the exact list.
 
@@ -384,7 +384,7 @@ pick up the skill; the hook entry it rewrites is the one it already wrote.
   the number was silently about the ask's `in:` instead. The row now says so and
   points at `onsetter hook`, which is the honest check.
 
-  Not building `replay --since <rev>` to fix this properly. Across every
+  This doesn't build `replay --since <rev>` to fix it properly: across every
   deployed ask set there is exactly one using a diff header and none using
   `removed:`, so an hour of git-history walking would serve a single gate that
   two piped JSON payloads verify in ninety seconds. If diff-gated asks get
@@ -403,10 +403,10 @@ now asks more than once in a session. See the first entry.
   Two kinds of block live in this format and want opposite treatment, and the
   block already says which it is. No content gate means nothing to quote, so the
   key is the bare ask ID and it fires once per session — the reminder case,
-  unchanged. A content gate means it is asking about a specific string, and *is
-  this narrator overreach* is a different question about `you nod` than about
-  `you find yourself`. So the rule is derived rather than configured, and there
-  is no new header.
+  unchanged. A content gate means it is asking about a specific string, and
+  *is this narrator overreach* means something different for `you nod` than
+  for `you find yourself`. The rule is derived rather than configured, and
+  there is no new header.
 
   The ceiling is authored: an ask fires at most once per distinct string its own
   regex can match. A content-gated ask that still only fires once is telling you
@@ -431,9 +431,9 @@ now asks more than once in a session. See the first entry.
 
 ## v0.2.0 — 2026-08-06
 
-First release with a changelog. `v0.1.0` was cut fifteen commits earlier, before
-most of the header set existed, and has no entry of its own; everything below
-covers the tool as it stands.
+The first release with a changelog: `v0.1.0` was cut fifteen commits earlier,
+before most of the header set existed, and has no entry of its own —
+everything below covers the tool as it stands.
 
 - `ask` fenced blocks in `CLAUDE.md`, `CLAUDE.local.md`, or
   `<dir>/.claude/CLAUDE.md`, with `in`, `when`, `not`, `on`. Asks from the

@@ -4,8 +4,8 @@ A Claude Code hook that injects prose from a `CLAUDE.md` at the Write or Edit
 that trips its gate. See `README.md` for what an ask is, or run
 `onsetter headers` for the header reference.
 
-Build and test with `make`. `make wire` installs the binary and writes the
-settings entry. `go test ./...` is what CI runs.
+`make wire` installs the binary and writes the settings entry; plain `make`
+only builds and tests. `go test ./...` is what CI runs.
 
 ## Asks
 

@@ -7,8 +7,8 @@ Please do not file public issues for suspected vulnerabilities.
 
 ## Threat model
 
-onsetter runs locally. It has no configuration beyond the `CLAUDE.md` files
-already in your tree, and it sends nothing to a network address beyond
+onsetter runs locally, with no configuration beyond the `CLAUDE.md` files
+already in your tree. It sends nothing to a network address beyond
 `localhost` — the one exception, `evokes:`, is covered below.
 
 **What it reads.** The `CLAUDE.md` and `CLAUDE.local.md` files between an

@@ -1,6 +1,6 @@
 ---
 name: onsetter
-description: How to write, measure and wire an onsetter ask — prose in a fenced ask block inside an ordinary CLAUDE.md, injected in front of the Write or Edit that trips its gate. Read this before adding or changing an ask block, before picking a header (requires, in, not-in, on, not, has, untouched, added, removed, when, evokes, revisit, always, name, cues), and whenever a CLAUDE.md in the tree already contains ask fences. Covers where the block goes, the replay-before-wiring rule, the two things replay cannot measure, why a wide gate now costs more than it used to, and how one ask can cue another by name.
+description: How to write, measure and wire an onsetter ask — prose in a fenced ask block inside an ordinary CLAUDE.md, injected in front of the Write or Edit that trips its gate. Read this before adding or changing an ask block, before picking a header (requires, in, not-in, on, not, has, untouched, added, removed, when, evokes, revisit, always, name, cues), and whenever a CLAUDE.md in the tree already contains ask fences. Covers where the block goes, the replay-before-wiring rule, why a wide gate now costs more than it used to, what replay cannot measure, and how one ask can cue another by name.
 ---
 
 # Writing an onsetter ask
@@ -10,8 +10,9 @@ keyword `ask`: headers, one blank line, then prose, all inside the fence.
 Onsetter runs as a `PreToolUse` hook on Write and Edit. When a block's gates
 match the pending edit, its body is injected in front of that edit.
 
-Nothing calls onsetter. It fires on the tool call whether or not anyone knows
-it is there — which is the point, and also why this skill exists. The firing
+Nothing calls onsetter directly — it fires on the tool call regardless of
+whether anyone knows it's there, which is the point, and also why this skill
+exists. The firing
 side needs no discovery; the authoring side does.
 
 ## Get the header reference from the binary
@@ -30,8 +31,8 @@ and the ask fires on the tests anyway. Path exclusion is `not-in:`.
 Three of the fifteen, `name:`, `cues:` and `always:`, aren't gates at all:
 `cues:` lets a fired ask also inject a second ask's prose by name, without
 checking that second ask's own gate; `always:` skips the once-per-session
-suppression entirely, so an ask whose corpus is suspect by construction (every
-matching edit, not just the first) can ask every time instead of once.
+suppression entirely, so an ask whose corpus is suspect by construction can
+fire on every matching edit rather than stopping after the first.
 `onsetter headers` covers the semantics, the loop-safety, and the real
 gotchas (a cue can only reach an ask its own `CLAUDE.md` chain would already
 see; `always:` on an unnarrowed ask is the loudest injection this format can
@@ -47,9 +48,9 @@ moves.
 
 One exception: asks in `<root>/.claude/CLAUDE.md` scope to `<root>`, because
 Claude Code loads that file as the project's own. That exception needs a real
-project root: an ask in the global `~/.claude/CLAUDE.md` scopes to
-`~/.claude/` itself, not to `$HOME` — there's no project root above `$HOME`
-for its globs to be relative to.
+project root: an ask in the global `~/.claude/CLAUDE.md` scopes only to
+`~/.claude/` itself — there's no project root above `$HOME` for its globs to
+be relative to.
 
 Never add an ask to a checkout you do not own.
 
@@ -75,7 +76,7 @@ rate cannot tell you whether the threshold is right. `onsetter calib <ask>
 <fires-glob> <not-glob>` is the equivalent for this one header: point it at
 labeled positive and negative examples and it reports where they actually
 land — including whether they overlap, in which case the fix is rewording
-the phrases, not picking a different number.
+the phrases rather than picking a different number.
 
 ## What replay cannot tell you
 
@@ -107,8 +108,8 @@ occurrence (the quote plus the edit around it, not the quote alone) recurs.
 `has:`-only block is a reminder too, same as a `cues:`-reached firing, which
 never checks its own gate and so never has anything to quote either.
 
-That's not a tightened once-per-session default — it's no suppression at
-all for the matched case, replaced by a count. The old key hashed the quote
+This is no suppression at all for the matched case, replaced by a count,
+rather than a tightened once-per-session default. The old key hashed the quote
 alone, so two unrelated occurrences sharing a short match silently
 collapsed into one already-answered question; the count exists so a repeat
 gets triaged by whoever's reading it, not hidden by a session file that
@@ -118,8 +119,8 @@ The consequence when drafting: gate width is still expensive, more than
 before. A pattern matching most of a corpus now costs one injection per
 occurrence, with no once-per-session ceiling to cap it — the old "twenty
 alternatives, twenty questions" ceiling no longer holds for a matched ask,
-since the same string recurring in different edits is a fresh occurrence
-each time, not one capped question.
+since the same string recurring in different edits counts as a fresh
+occurrence each time, rather than one capped question.
 
 `always: true` opts a matched ask out of the count — every firing looks
 identical, for a near-check corpus where that's already expected. `revisit:`

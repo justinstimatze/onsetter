@@ -80,8 +80,8 @@ never happens, because nothing makes it happen at the moment it applies.
 
 ## Install
 
-Two independent paths. Pick one — running both wires the hook twice, and
-`onsetter status` will tell you if that's happened.
+There are two independent install paths — pick one, since running both wires
+the hook twice, and `onsetter status` will tell you if that's happened.
 
 **As a Claude Code plugin.** No Go toolchain needed: a `SessionStart` hook
 fetches a release binary and verifies it against a checksum pinned in this
@@ -147,9 +147,9 @@ were right. An agent mid-edit reads one sentence and either changes course or
 dismisses it in a clause. Advice too imprecise to automate costs almost nothing
 when the recipient was going to process the tokens anyway.
 
-That asymmetry has a floor. A question and a permission prompt fail the same
-way: both hand the decision back to whoever might skip it, at the moment
-they're already mid-task and might skip it again. If the actual failure is
+That asymmetry has a floor: a question and a permission prompt fail the same
+way, both handing the decision back to whoever might skip it — right when
+they're mid-task and likely to skip it a second time. If the actual failure is
 *the rule was right there and got ignored anyway*, arriving at a better
 moment doesn't remove that dependency — it aims the same mechanism more
 precisely. Removing it takes a check nothing gets a vote on. That's a
@@ -235,7 +235,7 @@ place; the rest are on probation.
 Headers, one blank line, then the prose, all inside the fence — and the blank
 line is required even when there are no headers, or the first sentence is read
 as one. Every header names the text it matches against, and every one is
-optional. They are listed here in the order they are applied, which is the
+optional. They are listed here in the order they are applied — the same
 order `replay` reports a funnel in:
 
 | header | matches | default |
@@ -296,9 +296,9 @@ leading `./`.
 
 `added` and `removed` come from a real line diff of `old_string` against
 `new_string`, so an edit that replaces a span already containing the pattern
-does not read as introducing it. `removed` is the only gate that can see a
-deletion at all — nothing about taking an error check out appears in the text
-being written, which is why that class survives review.
+does not read as introducing it. Only `removed` can see a deletion at all —
+nothing about taking an error check out appears in the text being written,
+which is why that class survives review.
 
 ```ask
 in: **/*.go
@@ -314,8 +314,8 @@ rather than on the edit, which is how you write *this file already has a mutex
 and you are adding a second locking scheme*. The file is read only when some
 ask actually asks for it.
 
-`untouched` is the paired-file gate — the *you changed one half of this and not
-the other* class:
+`untouched` gates on the paired-file case — *you changed one half of this and
+not the other*:
 
 ```ask
 in: internal/db/schema.go
@@ -338,9 +338,9 @@ own logic, is still invisible — dismissible in a sentence, but worth knowing
 before you write one. The path in hand is recorded *after* matching, so an
 edit never satisfies an `untouched:` gate about itself.
 
-`evokes` is the one header that isn't a regex or a glob — it's a fuzzy trigger
-phrase, and repeating it is an OR (fires on any one), not the AND every other
-repeatable header uses:
+`evokes` is a fuzzy trigger phrase rather than a regex or a glob. Repeating it
+means an OR — it fires on any one of them — where every other repeatable
+header means an AND:
 
 ```ask
 evokes: committing without asking the user first
@@ -351,15 +351,15 @@ Never commit or push without explicit confirmation.
 
 It needs setup nothing else here does. `onsetter warm` embeds every `evokes:`
 phrase into a local cache ahead of time — the hook never fills a cache miss
-itself, so a phrase added since the last `warm` silently never fires. It also
-needs [Ollama](https://ollama.com) running locally with an embedding model
-pulled; missing either one degrades to "this ask does not fire," never an
-error. And it has almost no signal on a whole code file: a true paraphrase
+itself, so a phrase added since the last `warm` silently never fires. Running
+[Ollama](https://ollama.com) locally with an embedding model pulled is
+required too; missing either one degrades to "this ask does not fire," never
+an error. And it has almost no signal on a whole code file: a true paraphrase
 scores well above an unrelated sentence when the relevant text stands alone,
 but bury it in a page of syntax and the score drops to barely above noise.
 `evokes` is for a topic or a shape of reasoning in comments, commit messages,
 or prose files — the regex headers above it already own code-shaped
-triggers, and that split is measured, not a style preference.
+triggers, and measurement is what drew that line.
 
 A regex header gets `replay` for free — its own match or no-match is its own
 ground truth, no labels needed. `evokes` doesn't have that: whether a fuzzy
@@ -388,13 +388,13 @@ the evokes: phrases or the examples themselves need rework, not just a number
 
 Five examples were enough to catch this: "reviewed the PR carefully and left
 three comments" scored above the weakest genuine match, meaning no threshold
-separates that pair — the phrases need rewording, not a different number.
-That is the whole reason this exists as a real tool rather than a hand-run
+separates that pair — the phrases need rewording, not a different number,
+which is the whole reason this exists as a real tool rather than a hand-run
 scratch test: the number that matters is whichever example set an author
 actually built, not the two or three pairs it shipped measured against.
 
-`name` and `cues` let one ask fire a second one by name, without checking
-that second ask's own gate at all:
+`name` and `cues` let one ask fire a second one by name — its gate is never
+consulted:
 
 ```ask
 when: fetch\(.*credentials
@@ -418,10 +418,10 @@ other no-content-gate ask, and it can only ever reach a `name:` declared in a
 is visited at most once per edit. `onsetter headers` has the full mechanics
 and the one real gotcha (the ancestor-scope rule above).
 
-A matched ask already fires on every occurrence — `always` is for opting out
-of the *count* that marks a repeat, for a corpus where every matching edit is
-already suspect by construction and a running "asked 4× already" number
-would just be noise.
+A matched ask already fires on every occurrence. `always` opts it out of the
+*count* that marks a repeat, for a corpus where every matching edit is
+suspect by construction and a running "asked 4× already" number would just
+be noise.
 
 ```ask
 in: corpus/**
@@ -467,10 +467,10 @@ in: **/*.go
 not-in: **/*_test.go
 when: \bappend\(|\bRecord[A-Z]|\bStore[A-Z]
 
-This records state. Trace the read side now: does the value have a reader that
-reaches the user — a rendered field, an API response, a log someone greps? If
-it is internal plumbing feeding another writer, confirm that writer exists and
-continue.
+This records state — trace the read side now: does the value have a reader
+that reaches the user — a rendered field, an API response, a log someone
+greps? If it is internal plumbing feeding another writer, confirm that writer
+exists and continue.
 ```
 ````
 
@@ -496,7 +496,7 @@ Narrow it, or move the ask closer to the files it is about.
 The new one fires on over a third of the Go files in this glob, where the two
 beside it either barely fire or — the third line — can't reach a single one of
 these 25, because its own `in:` scopes it to one file elsewhere in the repo on
-purpose. It is an ask that gets scrolled past by Thursday, and it reads
+purpose. This is an ask that gets scrolled past by Thursday, and it reads
 perfectly well. In a repo with two hundred packages and the same `in:`
 narrowed to the five that hold mutable state, it is a good ask. Same regex,
 same prose, different blast radius — and nothing but a rate tells
@@ -523,8 +523,8 @@ the ask would have caught.
 
 `replay` measures what a gate **costs**. It cannot measure what a gate
 **catches**: the corpus has already been cleaned of the defect the ask looks
-for, so a healthy ask and a dead one both read as zero. That is a property of
-the corpus, not a gap to close here.
+for, so a healthy ask and a dead one both read as zero — a fact about the
+corpus itself.
 
 It can say *where* a zero came from, which is the next best thing. Every ask
 that fired on nothing gets a funnel line naming the gates that turned its files
@@ -671,8 +671,8 @@ governs, then stays quiet. A block with a content gate is an inspection —
 *is this narrator overreach* is a different question about `you nod` in one
 file than the same three words in another — and it fires on every
 occurrence, forever, marked `(asked 2× already this session)` once it's
-recurred. An occurrence is the quote *and* the edit around it, not the quote
-alone: two edits sharing a short match are two different questions, and a
+recurred. An occurrence is the quote together with the edit around it: two
+edits sharing a short match are two different questions, and a
 byte-identical repeat of the same edit is still the same occurrence, still
 worth a fresh count.
 
@@ -730,8 +730,9 @@ for no measurable gain.
 Anything a linter already does, because that is free and this costs attention.
 Anything that has to block, because it only ever advises. And any ask whose
 honest answer is always yes — a matched ask fires on every occurrence now,
-so a poorly narrowed one is pure wallpaper, not an occasional repeat; `replay`
-exists specifically to catch this before it's wired, and its own warning
+so a poorly narrowed one becomes constant wallpaper instead of an occasional
+repeat; `replay` exists specifically to catch this before it's wired, and its
+own warning
 ("a gate tripping on more than a few percent of what it matches is a tax")
 is about exactly this cost.
 
@@ -784,8 +785,8 @@ state actually satisfied them. Averaged over six models:
 
 Read the last two rows against each other before believing onsetter works.
 Narrowing to the relevant rules bought one point. Compiling them into
-enforceable checks bought fifteen. That is evidence for enforcement, and
-onsetter does not enforce.
+enforceable checks bought fifteen: evidence for enforcement, and onsetter
+does not enforce.
 
 What TRACE did not vary is *when*. Every condition there hands over its rules
 at prompt time, and onsetter's entire claim is about arrival at the tool call

@@ -456,9 +456,9 @@ worth having. So:
 onsetter replay 'corpus/**/*.md'
 ```
 
-Every first draft over-fires. One draft fired on every file in its corpus
-because it gated on the file carrying a citation, which is what every file in
-that corpus is. A gate tripping on more than a few percent of what it matches
+Every first draft over-fires — one fired on every file in its corpus because
+it gated on the file carrying a citation, which is what every file in that
+corpus is. A gate tripping on more than a few percent of what it matches
 is a tax on every edit it touches.
 
 Replay cannot measure what a gate *catches* — the corpus has been cleaned of
@@ -512,9 +512,9 @@ One invariant this changes: a reminder still has a ceiling of exactly one
 firing per session, since it has only ever had one possible key. A matched
 ask no longer does — "an ask can fire at most once per distinct string its
 regex can match" was true when the key was the string alone; now the key
-includes the edit, so the same string recurring in twenty different edits is
-twenty occurrences, not one. The ceiling that's left is authored by the
-corpus, not the pattern: how many times a real edit will ever contain a
+includes the edit, so the same string recurring in twenty different edits
+counts as twenty occurrences. What's left as a ceiling is authored by the
+corpus rather than the pattern: how many times a real edit will ever contain a
 match, which `replay` still measures as a rate, just no longer one a session
 key could distort.
 
@@ -547,6 +547,7 @@ change, and `cues:`'s own release, both already paid. `cues:` still leaves
 just to make its cue wiring read better, should not re-arm every
 already-answered session instance of it.
 
-Identity is a hash of the gate and the body, not the line number, so inserting
-a paragraph above an ask changes nothing and editing its prose re-arms it. To
+Identity is a hash of the gate and the body rather than the line number, so
+inserting a paragraph above an ask changes nothing and editing its prose
+re-arms it. To
 retire one, delete the block.
