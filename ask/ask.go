@@ -358,6 +358,21 @@ func (r *Ask) Match(e Edit) Result {
 	// from a real Myers diff rather than an occurrence count, so replacing a
 	// span that already contained the pattern does not read as adding it.
 	if len(r.Added) > 0 || len(r.Removed) > 0 {
+		if len(e.Old)+len(e.New) > maxDiffBytes {
+			// Myers diff cost isn't bounded by this package — an edit whose
+			// old+new text this large would rather this ask stay silent than
+			// gate the hook's own "fail open" invariant on a diff nobody
+			// asked for. Measured before this cap existed: 4,000 old+new
+			// lines cost 1.1GB RSS; this cap sits an order of magnitude
+			// below that, comfortably clear of it. Degrades the same way
+			// evokes: does when Ollama is unreachable — "this ask does not
+			// fire," never an error.
+			gate := "added"
+			if len(r.Added) == 0 {
+				gate = "removed"
+			}
+			return no(gate, "", "edit too large to diff safely")
+		}
 		add, rem := diffLines(e.Old, e.New)
 		for _, re := range r.Added {
 			m := re.FindString(add)
@@ -546,6 +561,13 @@ func Cascade(asks []*Ask, direct []CascadeHit) []CascadeHit {
 	}
 	return out
 }
+
+// maxDiffBytes bounds len(old)+len(new) before diffLines runs. Measured
+// without a cap: 4,000 combined old+new lines cost 1.1GB RSS; 20,000 lines
+// got OOM-killed at 8.7GB before its own 120s timeout fired. This cap sits
+// an order of magnitude under the first measured danger point, at a size no
+// legitimate single edit approaches.
+const maxDiffBytes = 100_000
 
 // diffLines returns the inserted and deleted lines of old -> new, each joined
 // back into one string so an ordinary regex can be run over them. A Write has

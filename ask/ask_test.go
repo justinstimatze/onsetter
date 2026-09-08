@@ -334,6 +334,28 @@ func TestRemovedSeesOnlyDeletedLines(t *testing.T) {
 	}
 }
 
+// maxDiffBytes exists so an edit large enough to make the Myers diff
+// expensive skips diffLines entirely rather than paying its cost — this
+// pins the cap's behavior at both sides without needing an edit anywhere
+// near the size that made the cap necessary in the first place.
+func TestAddedSkipsTheDiffPastTheSizeCap(t *testing.T) {
+	r := parseOne(t, "```ask\nadded: panic\\(\n\nAsk.\n```\n")
+	p := filepath.FromSlash("/repo/corpus/a.go")
+
+	// Comfortably under the cap: still diffs normally and fires.
+	small := strings.Repeat("x\n", 10_000) // 20,000 bytes
+	if _, ok := match(r, Edit{Path: p, Old: small, New: small + "panic(\"x\")\n", Exists: true}); !ok {
+		t.Error("an edit under maxDiffBytes did not fire")
+	}
+
+	// Comfortably over the cap: would fire if diffed, must not once the
+	// added: pattern only exists in a New the cap refuses to diff.
+	big := strings.Repeat("x\n", 60_000) // 120,000 bytes, over maxDiffBytes
+	if _, ok := match(r, Edit{Path: p, Old: big, New: big + "panic(\"x\")\n", Exists: true}); ok {
+		t.Error("an edit over maxDiffBytes fired added: instead of skipping the diff")
+	}
+}
+
 // `has:` gates on the file as it stands, not on the edit — "this file already
 // does X and you are adding a second way to do it".
 func TestHasGatesOnTheFileNotTheEdit(t *testing.T) {

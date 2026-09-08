@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- **`added:`/`removed:` no longer diff an unbounded edit.** `ask/ask.go`'s
+  `diffLines` called `myers.ComputeEdits` on the full `old`/`new` text with
+  no size check — found by a fresh research pass asking "does this actually
+  work," which measured cost rather than assuming it: a 4,000-line edit cost
+  1.1GB RSS, a 20,000-line edit got OOM-killed at 8.7GB before its own 120s
+  timeout fired. Neither a panic `recover()` catches, since a Go OOM is a
+  runtime throw, not one — the one path that could defeat the hook's own
+  "fail open" invariant. `maxDiffBytes` (100,000, an order of magnitude
+  under the first measured danger point) now gates the diff; past it, the
+  ask degrades to "does not fire," the same convention `evokes:` already
+  uses when Ollama's unreachable. New test proves the cap fires and stays
+  quiet at both sides of the boundary without needing an edit anywhere near
+  the size that made it necessary.
+
 ## v0.9.1 — 2026-09-08
 
 A second adversarial pass — this one over the plugin packaging as a whole
