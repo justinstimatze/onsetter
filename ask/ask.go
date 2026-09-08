@@ -562,6 +562,18 @@ func Cascade(asks []*Ask, direct []CascadeHit) []CascadeHit {
 	return out
 }
 
+// multiline prepends (?m) to an added:/removed: pattern, so `^` and `$`
+// anchor to each line in the joined added/deleted text diffLines produces,
+// not to the start and end of the whole block. Without this, an author
+// writing `added: ^\s*[-*]` gets a pattern that only ever matches when the
+// intended line happens to be first in the diff — reported live: one ask
+// fired only when its match landed on the first added line, a sibling using
+// `removed: ^func (Check|Law|Prop|Test)` never fired at all, since a removed
+// Go function is essentially never the first deleted line of a hunk.
+// Redundant if the author already wrote (?m) themselves — Go's regexp
+// accepts a repeated flag group as a no-op, confirmed, not an error.
+func multiline(pattern string) string { return "(?m)" + pattern }
+
 // maxDiffBytes bounds len(old)+len(new) before diffLines runs. Measured
 // without a cap: 4,000 combined old+new lines cost 1.1GB RSS; 20,000 lines
 // got OOM-killed at 8.7GB before its own 120s timeout fired. This cap sits
@@ -717,13 +729,13 @@ func parseBlock(lines []string, source, dir string, start int) (*Ask, error) {
 			}
 			r.When = append(r.When, re) // repeated when: is an AND
 		case "added":
-			re, err := regexp.Compile(v)
+			re, err := regexp.Compile(multiline(v))
 			if err != nil {
 				return nil, fmt.Errorf("added: %w", err)
 			}
 			r.Added = append(r.Added, re)
 		case "removed":
-			re, err := regexp.Compile(v)
+			re, err := regexp.Compile(multiline(v))
 			if err != nil {
 				return nil, fmt.Errorf("removed: %w", err)
 			}

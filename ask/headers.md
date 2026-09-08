@@ -245,8 +245,14 @@ pattern therefore does not read as adding it.
 `removed:` is the class nothing else here can see: an edit that takes something
 out leaves no trace in the text being written.
 
-Two shapes to know. A Write has no old text, so `added:` sees the whole file and
+Three shapes to know. A Write has no old text, so `added:` sees the whole file and
 `removed:` can never fire.
+
+The matched lines are joined into one string before the pattern runs against
+them, and that string is compiled with `(?m)`, so `^` and `$` anchor to each
+line rather than to the start and end of the whole join — `added: ^\s*[-*]`
+means "a line starting with a bullet," not "the first added line, whatever it
+is." Writing `(?m)` yourself is harmless and redundant, never an error.
 
 And `onsetter list` and `onsetter replay` construct synthetic edits from files on
 disk, so `added:` degrades to `when:` and `removed:` reports nothing in either of

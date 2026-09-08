@@ -69,6 +69,14 @@ truth. It fires on every occurrence, marking a repeat instead of hiding it —
 see [Design](#design) for what that means and why. To be rid of it,
 delete the block.
 
+[The failure it answers](#the-failure-it-answers) ·
+[Install](#install) ·
+[Writing an ask](#writing-an-ask) ·
+[Commands](#commands) ·
+[Design](#design) ·
+[Where it sits](#where-it-sits) ·
+[Prior art](#prior-art)
+
 ## The failure it answers
 
 You write the convention down, it loads at the top of the session with
@@ -766,6 +774,13 @@ the same time.
 Closest in spirit: a `CODEOWNERS` file that asks the question itself instead of
 summoning the reviewer, and an `.eslintrc` cascade whose rules are prose and
 whose fix is judgement.
+
+Closest in mechanism: Anthropic's own `security-guidance` plugin, which ships
+enabled by default in Claude Code and gates `PostToolUse` on path *and*
+pending content, injecting advisory `additionalContext` from author-supplied
+rules — never blocking, the same shape this project's own header vocabulary
+takes. The difference is `PostToolUse` versus `PreToolUse`: its note arrives
+after the write has already landed, this one before.
 
 The 55.0% at the top of this page is from **TRACE** — *Getting Better at
 Working With You: Compiling User Corrections into Runtime Enforcement for

@@ -334,6 +334,38 @@ func TestRemovedSeesOnlyDeletedLines(t *testing.T) {
 	}
 }
 
+// added:/removed: run against the diff's inserted/deleted lines joined into
+// one string, so a bare `^` in the pattern used to anchor to the start of
+// that whole block rather than the start of each line — reported live by a
+// real user: an ask matching only when its line happened to land first in
+// the diff, and a sibling ask that could never fire at all, since the line
+// it wanted was essentially never the first one. multiline() fixes this by
+// compiling with (?m), so `^` means what "matches a line" already implied.
+func TestAddedAnchorsPerLineNotPerBlock(t *testing.T) {
+	r := parseOne(t, "```ask\nadded: ^\\s*[-*] a real entry\n\nAsk.\n```\n")
+	p := filepath.FromSlash("/repo/corpus/BOUNDARY.md")
+
+	// The matching line is second in the diff, not first — this is exactly
+	// the shape that silently never fired before (?m) was added.
+	old := "# Boundary\n\n"
+	new := "# Boundary\n\n- an unrelated first entry\n- a real entry\n"
+	if _, ok := match(r, Edit{Path: p, Old: old, New: new, Exists: true}); !ok {
+		t.Error("added: with ^ did not fire on a match that wasn't the first added line")
+	}
+}
+
+func TestRemovedAnchorsPerLineNotPerBlock(t *testing.T) {
+	r := parseOne(t, "```ask\nremoved: ^func (Check|Law)\n\nAsk.\n```\n")
+	p := filepath.FromSlash("/repo/corpus/foo.go")
+
+	// The deleted function signature is second in the diff, not first.
+	old := "func Helper() {}\n\nfunc Check(x int) bool { return x > 0 }\n"
+	new := "func Helper() {}\n"
+	if _, ok := match(r, Edit{Path: p, Old: old, New: new, Exists: true}); !ok {
+		t.Error("removed: with ^ did not fire on a deleted line that wasn't first")
+	}
+}
+
 // maxDiffBytes exists so an edit large enough to make the Myers diff
 // expensive skips diffLines entirely rather than paying its cost — this
 // pins the cap's behavior at both sides without needing an edit anywhere

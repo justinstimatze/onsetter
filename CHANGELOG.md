@@ -8,13 +8,32 @@
   work," which measured cost rather than assuming it: a 4,000-line edit cost
   1.1GB RSS, a 20,000-line edit got OOM-killed at 8.7GB before its own 120s
   timeout fired. Neither a panic `recover()` catches, since a Go OOM is a
-  runtime throw, not one — the one path that could defeat the hook's own
+  runtime throw rather than one — the one path that could defeat the hook's own
   "fail open" invariant. `maxDiffBytes` (100,000, an order of magnitude
   under the first measured danger point) now gates the diff; past it, the
   ask degrades to "does not fire," the same convention `evokes:` already
   uses when Ollama's unreachable. New test proves the cap fires and stays
   quiet at both sides of the boundary without needing an edit anywhere near
   the size that made it necessary.
+- **`added:`/`removed:` now anchor per line, not per block.** The diff's
+  matched lines are joined into one string before the pattern runs; without
+  `(?m)`, a bare `^`/`$` anchored to the start and end of that whole join,
+  not each line — a real user reported one ask that fired only when its
+  match happened to land on the first added line, and a sibling
+  (`removed: ^func (Check|Law|Prop|Test)`) that could never fire at all,
+  since a removed function is essentially never the first deleted line of a
+  hunk. Both headers now compile with `(?m)` unconditionally; writing it
+  yourself compiles fine too, redundant flags being harmless in Go's regexp
+  syntax. `ask/headers.md` names the anchor behavior directly instead of
+  leaving it to be discovered.
+- **README prior-art section names Anthropic's own `security-guidance`
+  plugin**, which ships enabled by default in Claude Code and already gates
+  `PostToolUse` on path and pending content with advisory
+  `additionalContext` — same shape, `PostToolUse` instead of `PreToolUse`.
+  Verified from its actual source this session, not assumed. Also adds a
+  short table of contents after the opening story, so a reader deciding
+  whether to install isn't required to scroll past the full header
+  reference to reach `Commands`/`Design`/`Where it sits`.
 
 ## v0.9.1 — 2026-09-08
 
