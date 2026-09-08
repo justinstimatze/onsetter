@@ -80,6 +80,26 @@ never happens, because nothing makes it happen at the moment it applies.
 
 ## Install
 
+Two independent paths. Pick one — running both wires the hook twice, and
+`onsetter status` will tell you if that's happened.
+
+**As a Claude Code plugin.** No Go toolchain needed: a `SessionStart` hook
+fetches a release binary and verifies it against a checksum pinned in this
+repo before ever running it.
+
+```
+/plugin marketplace add justinstimatze/onsetter
+/plugin install onsetter@onsetter
+```
+
+The skill and the `on: read`-capable matcher below are both manual-install
+extras. The plugin's `hooks/hooks.json` wires `Write`/`Edit`/`Bash` only —
+there's no plugin equivalent of `--read` yet — and `skills/onsetter/SKILL.md`
+already ships with the plugin, so nothing else to run.
+
+**As a Go binary**, for `on: read` support or if you'd rather build it
+yourself:
+
 ```
 go install github.com/justinstimatze/onsetter/cmd/onsetter@latest
 onsetter install
@@ -88,17 +108,17 @@ onsetter install
 `onsetter install` writes the one settings entry into
 `~/.claude/settings.local.json`. Re-running converges instead of stacking, and
 it leaves every other project's hooks alone. From a clone, `make wire` does
-both and stamps the version from the git tag.
-
-It also writes `~/.claude/skills/onsetter/SKILL.md`, which is how *writing* an
-ask becomes discoverable. The hook needs no such thing — it fires on the tool
-call whether or not anything knows it exists. Drafting a block is the opposite:
+both and stamps the version from the git tag. It also writes
+`~/.claude/skills/onsetter/SKILL.md` itself, which is how *writing* an ask
+becomes discoverable — the hook needs no such thing, since it fires on the
+tool call whether or not anything knows it exists, but drafting a block does:
 there is no tool named onsetter in an agent's list, so without the skill the
 format is only findable by reading this file. The skill is indexed by its
 description and loads when an ask is being written, and it defers the header
 table to `onsetter headers` rather than copying it, so the reference an agent
-reads is always the one the installed parser implements. Nobody has to remember
-a slash command.
+reads is always the one the installed parser implements. Pass `--read` to
+also wire an `on: read` matcher — see [Writing an ask](#writing-an-ask) for
+what that trades off.
 
 Hook settings are read per session, so a session already running will not pick
 this up. Start a new one.
@@ -577,13 +597,13 @@ from, so it has to pick which `CLAUDE.md` governs a call itself — a fixed
 location, a store's own root — rather than discovering it the way `onsetter
 hook` does for a `Write` or `Edit`.
 
-The motivating caller is winze-agent's `capture-guard`, gating
-`winze_remember(note, ...)` the way this hook gates a file write; see
-[`INTEGRATIONS.md`](INTEGRATIONS.md) for the design note. `Ask`, `Edit`,
-`Result`, `Match`, and `Parse*` are the exported names. The package moved out
-of `internal/` because that caller needed to import it. The surface hasn't
-settled against more than one consumer yet, so there's no stability
-guarantee.
+The motivating caller gates an MCP tool's own argument the way this hook
+gates a file write — no path, so `Edit.Path` can be empty, and the caller
+picks which `CLAUDE.md` governs the call itself rather than discovering it.
+`Ask`, `Edit`, `Result`, `Match`, and `Parse*` are the exported names. The
+package moved out of `internal/` because that caller needed to import it. The
+surface hasn't settled against more than one consumer yet, so there's no
+stability guarantee.
 
 ## Commands
 

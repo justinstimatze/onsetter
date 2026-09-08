@@ -1,5 +1,55 @@
 # Changelog
 
+## v0.9.1 — 2026-09-08
+
+A second adversarial pass — this one over the plugin packaging as a whole
+rather than one script — found a gap that made v0.9.0 not actually
+self-installable, plus a real leak already live on this public repo.
+
+- **`.claude-plugin/marketplace.json`**, missing from v0.9.0 entirely.
+  Without it, `/plugin marketplace add` has nothing to add — that command
+  always targets a marketplace catalog, never a bare plugin repo, so
+  `justinstimatze/onsetter` alone was not actually installable by anyone,
+  from any commit before this one. `source: "./"` because the plugin
+  already lives at the repo root; verified for real, not just against
+  `claude plugin validate`: added this repo as its own marketplace and
+  installed `onsetter@onsetter` into an isolated `HOME`, confirmed the
+  version, the cache layout, and that the `skills/onsetter/SKILL.md`
+  symlink survives the copy into `~/.claude/plugins/cache`.
+- **`INTEGRATIONS.md` deleted.** It named `~/.claude/CLAUDE.md` by path and
+  section — private, global, and not this repo's to reference — and cited
+  file:line detail from a project with no public repo at that name, none
+  of it verifiable by a reader. Already live on a public repo, not just a
+  pre-submission concern. The one still-relevant fact (the `ask` package's
+  path-less `Edit` support exists because a second `PreToolUse` caller
+  needed it) is folded into the *Using `ask` as a library* section, without
+  naming what that caller is.
+- **`.gitignore` now excludes the three session-handoff notes** another
+  Claude Code session had dropped at the repo root, un-ignored, one
+  `git add -A` from landing in a commit: conversation-trace prose
+  ("written by a session, at Justin's request"), a competitor's star
+  count, cross-project detail. Named explicitly rather than by a glob, so
+  a real future root-level doc isn't silently swallowed by the same
+  pattern.
+- **README's `## Install` section now documents the plugin path** —
+  previously it only ever described `go install` + `onsetter install`,
+  meaning the one set of instructions a marketplace visitor would actually
+  follow led straight to the double-wiring `onsetter status` was built
+  last release to detect. Also notes that `on: read` has no plugin
+  equivalent yet (the plugin's `hooks.json` wires
+  `Write`/`Edit`/`Bash` only), and that the plugin ships its own
+  `skills/onsetter/SKILL.md` rather than writing one the way
+  `onsetter install` does.
+- **CI now runs `golangci-lint`**, closing a real gap: `make check` (and
+  `.golangci.yml`, already committed) required a tool CI never ran, so
+  errcheck/ineffassign/unused could pass CI while failing the local gate.
+  `release.yml`'s `actions/checkout`/`actions/setup-go` versions now match
+  `ci.yml`'s.
+- Plugin/marketplace `description` no longer says "one paragraph, one
+  time" — inaccurate since the always-fires-and-marks redesign shipped a
+  release ago — and now names `Bash`, which the hook has matched since
+  `onsetter install`'s `Bash` observer landed.
+
 ## v0.9.0 — 2026-09-08
 
 Packages onsetter for distribution as a Claude Code plugin, and fixes two
@@ -7,18 +57,19 @@ concurrency/visibility gaps a fresh adversarial review found in that
 packaging before it shipped.
 
 - **Plugin packaging**: `.claude-plugin/plugin.json`, `hooks/hooks.json`
-  (the same `SessionStart`/`PreToolUse` shape `install.go` already writes
-  into `settings.local.json`, just relocated), and `skills/onsetter/SKILL.md`
-  as a relative symlink to `ask/skill.md` — one source of truth, still
-  `//go:embed`-ded into the binary for the manual-install path.
-  `scripts/fetch.sh` runs from `SessionStart`, downloading the release
-  binary matching `plugin.json`'s pinned version into
-  `${CLAUDE_PLUGIN_DATA}`, verified before it's ever `chmod +x`'d or run.
-  `.goreleaser.yaml` and `.github/workflows/release.yml`, both modeled on
-  `hindcast`'s, give this repo the release pipeline `CC-INSIGHTS-2026-09-03.md`
-  already flagged as missing — `-X main.version={{ .Tag }}`, not
-  `{{ .Version }}`, so a goreleaser-built binary self-reports the same
-  string a local `make build` does for the same commit.
+  (its `PreToolUse` entry is the same shape `install.go` already writes into
+  `settings.local.json`; its `SessionStart` entry is new, plugin-only —
+  `install.go` never wired anything to that event), and
+  `skills/onsetter/SKILL.md` as a relative symlink to `ask/skill.md` — one
+  source of truth, still `//go:embed`-ded into the binary for the
+  manual-install path. `scripts/fetch.sh` runs from `SessionStart`,
+  downloading the release binary matching `plugin.json`'s pinned version
+  into `${CLAUDE_PLUGIN_DATA}`, verified before it's ever `chmod +x`'d or
+  run. `.goreleaser.yaml` and `.github/workflows/release.yml`, both modeled
+  on `hindcast`'s, give this repo a release pipeline for the first time —
+  `-X main.version={{ .Tag }}`, not `{{ .Version }}`, so a goreleaser-built
+  binary self-reports the same string a local `make build` does for the
+  same commit.
 - **`fetch.sh` hardening**, from an adversarial review that ran the failure
   modes rather than reasoning about them: a symlink named `onsetter` inside
   the release archive used to survive extraction and get `chmod +x`'d at
@@ -68,7 +119,7 @@ packaging before it shipped.
   demo numbers are regenerated against the real repo as it stands today,
   not carried over stale from when the repo had fewer files.
 
-## v0.8.0 — 2026-09-02
+## 2026-09-02 (shipped in the v0.9.0 tag — no v0.8.0 tag was ever cut)
 
 Three features from a sibling session's feedback on real onsetter usage,
 plus a breaking change — the first in this project's history — that grew

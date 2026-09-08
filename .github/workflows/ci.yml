@@ -24,6 +24,13 @@ jobs:
         run: go vet ./...
       - name: staticcheck
         run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+      - name: golangci-lint
+        # Same gate `make check` runs locally (.golangci.yml at repo root) —
+        # errcheck/ineffassign/unused aren't covered by vet or staticcheck
+        # above, so CI was passing on things `make check` would have failed.
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
       - name: test
         # the hook tests build the binary and drive it over stdin, the way
         # Claude Code does; nothing here needs network or a real session

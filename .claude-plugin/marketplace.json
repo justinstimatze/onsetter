@@ -1,0 +1,16 @@
+{
+  "name": "onsetter",
+  "description": "A single plugin: the onsetter PreToolUse hook.",
+  "owner": {
+    "name": "Justin Stimatze",
+    "url": "https://github.com/justinstimatze"
+  },
+  "plugins": [
+    {
+      "name": "onsetter",
+      "source": "./",
+      "description": "Injects a note from your CLAUDE.md at the Write, Edit, or Bash call it's actually about — not once at the top of the session and never again.",
+      "category": "development"
+    }
+  ]
+}

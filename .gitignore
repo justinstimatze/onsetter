@@ -3,3 +3,12 @@
 # command directory from the first commit.
 /onsetter
 *.bak-*
+
+# Session handoff/review notes another Claude Code session drops at the repo
+# root — conversation-trace prose ("written by a session", private local
+# paths, competitor internals) that belongs nowhere near a public commit.
+# Named explicitly rather than by a broad glob, so a real future root-level
+# doc doesn't get silently swallowed by the same pattern.
+/HANDOFF-marketplace-submission.md
+/FEEDBACK-2026-09-03.md
+/CC-INSIGHTS-2026-09-03.md
