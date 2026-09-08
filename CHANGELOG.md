@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Adds `EVAL.md`**, the first real attempt to test onsetter's own untested
+  claim — that delivery at the tool call beats delivery at prompt time — by
+  extending TRACE's own public ClawArena harness with a sixth condition
+  rather than building a parallel eval nobody could compare against their
+  table. The condition itself works: verified through `onsetter lint`, a
+  direct wrapper-firing test, a full zero-cost dry run, and 16 real
+  subscription-auth calls with zero errors. What it found instead: only 12
+  of the paper's 62 scenarios are public, only ~7% of their rounds carry a
+  violation onsetter can even address, and the paper's own published
+  numbers come from a mechanism that blocks completion — which isn't
+  onsetter's mechanism and isn't even what the public harness code ships as
+  "TRACE." Not a null result; the instrument was the wrong one to test the
+  claim against. README's TRACE citation now points to it.
+
 - **`added:`/`removed:` no longer diff an unbounded edit.** `ask/ask.go`'s
   `diffLines` called `myers.ComputeEdits` on the full `old`/`new` text with
   no size check — found by a fresh research pass asking "does this actually

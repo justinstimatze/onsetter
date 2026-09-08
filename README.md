@@ -808,7 +808,9 @@ at prompt time, and onsetter's entire claim is about arrival at the tool call
 instead — a variable nobody has isolated. So the paper establishes the problem
 and leaves this particular fix unproven. The honest scope of what is measured
 here is narrower: fire rates, and blocks that agreed with the shell scripts
-they replaced.
+they replaced. [`EVAL.md`](EVAL.md) documents a direct attempt to close that
+gap against TRACE's own evaluation harness, and the mismatch it surfaced
+instead.
 
 What onsetter adds beyond either is that the ask and the content it governs
 live in the same directory, so the ask moves when the content does.
