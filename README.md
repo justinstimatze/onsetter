@@ -359,7 +359,7 @@ scores well above an unrelated sentence when the relevant text stands alone,
 but bury it in a page of syntax and the score drops to barely above noise.
 `evokes` is for a topic or a shape of reasoning in comments, commit messages,
 or prose files — the regex headers above it already own code-shaped
-triggers, and measurement is what drew that line.
+triggers, and that split came from measurement.
 
 A regex header gets `replay` for free — its own match or no-match is its own
 ground truth, no labels needed. `evokes` doesn't have that: whether a fuzzy
