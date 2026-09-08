@@ -23,6 +23,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // Store is a per-session count of ask-occurrence keys, kept as one file of
@@ -62,7 +64,7 @@ func Open(id string) *Store {
 		}
 	}
 
-	b, err := os.ReadFile(s.path)
+	seen, err := readSeen(s.path)
 	if err != nil {
 		// First sighting of this session; a good moment to sweep old ones,
 		// since it happens once per session rather than once per edit.
@@ -70,6 +72,19 @@ func Open(id string) *Store {
 		prune(dir, 14*24*time.Hour)
 		return s
 	}
+	s.seen = seen
+	return s
+}
+
+// readSeen parses the on-disk key:count format. Shared by Open, which reads
+// it once at session start, and Record, which rereads it under a lock so a
+// concurrent writer's counts are never clobbered.
+func readSeen(path string) (map[string]int, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]int{}
 	for _, line := range strings.Split(string(b), "\n") {
 		if line = strings.TrimSpace(line); line != "" {
 			// key:count, split on the last colon since a matched key already
@@ -86,10 +101,10 @@ func Open(id string) *Store {
 			if err != nil || n <= 0 {
 				continue
 			}
-			s.seen[line[:i]] = n
+			seen[line[:i]] = n
 		}
 	}
-	return s
+	return seen, nil
 }
 
 // Key is the identity of one occurrence: the ask, the text it quoted back,
@@ -140,13 +155,56 @@ func (s *Store) Count(id string) int { return s.seen[id] }
 // whole point for a matched ask now, not a fact to collapse away. Errors are
 // dropped: failing to persist means a count resets, a nuisance, not a fault
 // worth surfacing mid-edit.
+//
+// More than one onsetter process can share a session id — a plugin install
+// running alongside a manual one wires the hook twice, and a batch of
+// parallel tool calls invokes it concurrently even with one wiring. Without
+// a lock, each process's Record overwrites the file with its own in-memory
+// snapshot from whenever it called Open, silently discarding whatever another
+// process recorded in between. The lock's critical section rereads the
+// on-disk state fresh rather than trusting that snapshot, so two concurrent
+// writers merge instead of racing.
 func (s *Store) Record(ids ...string) {
-	if s.path == "" {
+	if s.path == "" || len(ids) == 0 {
 		return
 	}
-	if len(ids) == 0 {
+
+	lock, err := os.OpenFile(s.path+".lock", os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		s.recordUnlocked(ids)
 		return
 	}
+	defer lock.Close()
+	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX); err != nil {
+		s.recordUnlocked(ids)
+		return
+	}
+	defer func() { _ = unix.Flock(int(lock.Fd()), unix.LOCK_UN) }()
+
+	current, err := readSeen(s.path)
+	if err != nil {
+		current = map[string]int{}
+	}
+	for k, n := range s.seen {
+		if _, ok := current[k]; !ok {
+			current[k] = n
+		}
+	}
+	for _, id := range ids {
+		current[id]++
+	}
+	s.seen = current
+
+	lines := make([]string, 0, len(current))
+	for k, n := range current {
+		lines = append(lines, k+":"+strconv.Itoa(n))
+	}
+	_ = os.WriteFile(s.path, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
+}
+
+// recordUnlocked is the pre-lock fallback: best effort against a machine
+// where flock itself is unavailable, rather than dropping the record.
+func (s *Store) recordUnlocked(ids []string) {
 	for _, id := range ids {
 		s.seen[id]++
 	}
@@ -195,5 +253,6 @@ func prune(dir string, age time.Duration) {
 		}
 		_ = os.Remove(filepath.Join(dir, e.Name()))
 		_ = os.Remove(filepath.Join(dir, e.Name()) + ".paths")
+		_ = os.Remove(filepath.Join(dir, e.Name()) + ".lock")
 	}
 }

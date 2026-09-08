@@ -4,7 +4,7 @@
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
 
-.PHONY: install build test lint check version wire
+.PHONY: install build test lint check version wire pin-checksums
 
 # Install to $GOBIN/$GOPATH/bin with the version baked in.
 install:
@@ -30,3 +30,9 @@ check: test lint
 
 version:
 	@echo $(VERSION)
+
+# Pin a published release's checksums.txt hash so the plugin's fetch.sh will
+# trust it. Run after `gh release view vX.Y.Z` shows real assets.
+# Usage: make pin-checksums VERSION=0.8.0
+pin-checksums:
+	./scripts/pin-checksums.sh $(VERSION)

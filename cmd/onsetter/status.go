@@ -45,6 +45,9 @@ func cmdStatus(args []string) error {
 		bad++
 	}
 
+	fmt.Println("\nplugin install")
+	bad += statusPlugin(wiringOK)
+
 	fmt.Println("\ndiscovery")
 	asks, problems := statusDiscovery(dir)
 	bad += problems
@@ -182,6 +185,46 @@ func statusReadWiring(asks []*ask.Ask, readWired bool, dir string) int {
 	}
 	fmt.Println("  → run `onsetter install --read`")
 	return len(readAsks)
+}
+
+// statusPlugin looks for a marketplace-installed onsetter, the second of the
+// two independent ways onsetter's hook gets wired. A plugin's hooks.json is
+// never written into settings.local.json, so before this check existed a
+// plugin-only install read as "not found, run onsetter install" above —
+// wrong advice for someone who never needed to run it. Detection is a
+// filesystem glob rather than reading Claude Code's own settings merge,
+// since enabledPlugins can be unset and still mean "enabled" (it falls back
+// to the plugin's defaultEnabled), so absence there proves nothing; a
+// populated cache or data directory is the more honest signal to check.
+func statusPlugin(manualWired bool) int {
+	home := os.Getenv("HOME")
+	cacheHits, _ := filepath.Glob(filepath.Join(home, ".claude", "plugins", "cache", "*", "onsetter"))
+	dataHits, _ := filepath.Glob(filepath.Join(home, ".claude", "plugins", "data", "onsetter*"))
+
+	if len(cacheHits) == 0 && len(dataHits) == 0 {
+		fmt.Println("  no marketplace-installed onsetter found under ~/.claude/plugins")
+		return 0
+	}
+
+	for _, hit := range cacheHits {
+		fmt.Printf("  plugin cache: %s\n", shortOne(hit))
+	}
+	for _, hit := range dataHits {
+		bin := filepath.Join(hit, "bin", "onsetter")
+		if info, err := os.Stat(bin); err == nil && info.Mode()&0o111 != 0 {
+			fmt.Printf("  fetched binary: %s\n", shortOne(bin))
+			continue
+		}
+		fmt.Printf("  data dir present, no fetched binary yet: %s\n", shortOne(hit))
+		fmt.Println("  → start a new session so the SessionStart hook can fetch one")
+	}
+
+	if !manualWired {
+		return 0
+	}
+	fmt.Println("  WARNING a manual install is also wired in settings.local.json — every Write/Edit/Bash call runs onsetter hook twice")
+	fmt.Println("  → keep one: uninstall the plugin, or remove the entry `onsetter install` wrote")
+	return 1
 }
 
 // statusDiscovery is lint's own walk, kept in sync deliberately: same

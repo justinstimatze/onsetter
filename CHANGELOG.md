@@ -1,5 +1,73 @@
 # Changelog
 
+## v0.9.0 — 2026-09-08
+
+Packages onsetter for distribution as a Claude Code plugin, and fixes two
+concurrency/visibility gaps a fresh adversarial review found in that
+packaging before it shipped.
+
+- **Plugin packaging**: `.claude-plugin/plugin.json`, `hooks/hooks.json`
+  (the same `SessionStart`/`PreToolUse` shape `install.go` already writes
+  into `settings.local.json`, just relocated), and `skills/onsetter/SKILL.md`
+  as a relative symlink to `ask/skill.md` — one source of truth, still
+  `//go:embed`-ded into the binary for the manual-install path.
+  `scripts/fetch.sh` runs from `SessionStart`, downloading the release
+  binary matching `plugin.json`'s pinned version into
+  `${CLAUDE_PLUGIN_DATA}`, verified before it's ever `chmod +x`'d or run.
+  `.goreleaser.yaml` and `.github/workflows/release.yml`, both modeled on
+  `hindcast`'s, give this repo the release pipeline `CC-INSIGHTS-2026-09-03.md`
+  already flagged as missing — `-X main.version={{ .Tag }}`, not
+  `{{ .Version }}`, so a goreleaser-built binary self-reports the same
+  string a local `make build` does for the same commit.
+- **`fetch.sh` hardening**, from an adversarial review that ran the failure
+  modes rather than reasoning about them: a symlink named `onsetter` inside
+  the release archive used to survive extraction and get `chmod +x`'d at
+  its real target — fixed by extracting into an isolated subdir and
+  requiring a real, non-symlink, non-empty file before touching
+  permissions. `mktemp` used to land outside `CLAUDE_PLUGIN_DATA`, making
+  the final `mv` into place a cross-filesystem streaming copy that left a
+  growing, already-executable file visible at its destination mid-copy —
+  fixed by keeping the temp dir on the same filesystem, so the move is an
+  atomic rename. Both curls now carry `--connect-timeout`/`--max-time`, the
+  `SessionStart` hook entry carries an explicit `timeout`, and the cleanup
+  trap covers `INT`/`TERM`/`HUP`, not just `EXIT` — a hook timeout kill is
+  exactly `SIGTERM`, which an `EXIT`-only trap never sees.
+  `scripts/checksums-pin.txt` (populated by `make pin-checksums
+  VERSION=x.y.z` after a release is confirmed published) closes the
+  remaining gap: `checksums.txt` is fetched from the same mutable release
+  as the binary it verifies, so on its own it only catches a truncated
+  download, not a compromised release. `fetch.sh` now refuses to trust an
+  unpinned `checksums.txt` at all — same silent, harmless failure as every
+  other branch, not a new exception to the invariant.
+- **`internal/session`'s `Record` is now safe against concurrent writers.**
+  Two onsetter processes sharing a session id — a plugin install wiring
+  the hook alongside a manual one, or a batch of parallel tool calls each
+  spawning their own process — used to silently lose each other's counts:
+  `Record` wrote its own in-memory snapshot from whenever it called `Open`,
+  clobbering whatever another process had written in between. `Record` now
+  takes an `flock` on a sibling `.lock` file and rereads the on-disk state
+  fresh inside that critical section before merging its own increments in.
+  A new test drives eight real concurrent `Store`s racing 200 increments
+  against one key and asserts none are lost, with the race detector on.
+- **`onsetter status` can now see a plugin-installed onsetter**, the second
+  of the two independent ways the hook gets wired — a plugin's
+  `hooks.json` is never written into `settings.local.json`, so before this
+  a plugin-only install read as "not found, run `onsetter install`," which
+  was wrong advice for someone who never needed to run it. It also flags
+  the case the concurrency fix above makes survivable but still wasteful:
+  a manual install wired alongside a plugin install, running `onsetter
+  hook` twice on every `Write`/`Edit`/`Bash` call.
+- **README's primary worked examples are no longer drawn from a specific
+  content-authoring pipeline.** The opening story, the five "kinds of ask"
+  examples, and the `Commands` section's `list` output now use onsetter's
+  own real, currently-wired ask (verbatim, from this repo's own
+  `CLAUDE.md`) and a handful of illustrative examples spanning ordinary
+  software conventions — an error string, a handler's context lifetime, an
+  accessible label, a comment's certainty, a regression lock — instead of
+  a specific game-narrative corpus. The "Replay before you wire" section's
+  demo numbers are regenerated against the real repo as it stands today,
+  not carried over stale from when the repo had fewer files.
+
 ## v0.8.0 — 2026-09-02
 
 Three features from a sibling session's feedback on real onsetter usage,

@@ -10,12 +10,15 @@ import (
 
 // runStatus runs bin with args, isolated to an explicit settings path and
 // cache dir so a test can never read or touch the real machine's
-// ~/.claude/settings.local.json or evokes: cache.
+// ~/.claude/settings.local.json or evokes: cache. HOME is pointed at the same
+// temp dir as cache — statusPlugin globs $HOME/.claude/plugins, and without
+// this a test run on a machine that has actually installed the onsetter
+// plugin would pick up the real one.
 func runStatus(t *testing.T, bin, dir, settings, cache string, args ...string) (string, error) {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "CLAUDE_SETTINGS="+settings, "XDG_CACHE_HOME="+cache)
+	cmd.Env = append(os.Environ(), "CLAUDE_SETTINGS="+settings, "XDG_CACHE_HOME="+cache, "HOME="+cache)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -257,6 +260,74 @@ func TestStatusClearsOnReadReportWhenReadIsWired(t *testing.T) {
 	}
 	if !strings.Contains(out, "Read is wired") {
 		t.Errorf("status did not confirm Read is wired:\n%s", out)
+	}
+}
+
+func TestStatusReportsNoPluginInstallCleanly(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	settings := filepath.Join(t.TempDir(), "settings.local.json")
+
+	out, _ := runStatus(t, bin, repo, settings, t.TempDir(), "status", ".")
+	if !strings.Contains(out, "no marketplace-installed onsetter found") {
+		t.Errorf("plugin section did not report cleanly with nothing installed:\n%s", out)
+	}
+}
+
+func TestStatusReportsFetchedPluginBinary(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	settings := filepath.Join(t.TempDir(), "settings.local.json") // never written — no manual install
+
+	home := t.TempDir()
+	dataDir := filepath.Join(home, ".claude", "plugins", "data", "onsetter-community")
+	mkdir(t, filepath.Join(dataDir, "bin"))
+	pluginBin := filepath.Join(dataDir, "bin", "onsetter")
+	write(t, pluginBin, "#!/bin/sh\n")
+	if err := os.Chmod(pluginBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runStatus(t, bin, repo, settings, home, "status", ".")
+	if !strings.Contains(out, "fetched binary") {
+		t.Errorf("plugin section did not report the fetched binary:\n%s", out)
+	}
+	if strings.Contains(out, "WARNING") {
+		t.Errorf("a plugin-only install should not warn about double-wiring:\n%s", out)
+	}
+	_ = err // other sections may still fail this bare repo; only the plugin section is under test
+}
+
+func TestStatusWarnsOnDoubleWiring(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	settings := filepath.Join(t.TempDir(), "settings.local.json")
+
+	home := t.TempDir()
+	dataDir := filepath.Join(home, ".claude", "plugins", "data", "onsetter-community")
+	mkdir(t, filepath.Join(dataDir, "bin"))
+	pluginBin := filepath.Join(dataDir, "bin", "onsetter")
+	write(t, pluginBin, "#!/bin/sh\n")
+	if err := os.Chmod(pluginBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// runStatus always points HOME at its cache arg, so the manual install
+	// below and the plugin data dir above must share one temp dir (home) for
+	// both to be visible to the same status run.
+	if out, err := runStatus(t, bin, repo, settings, home, "install", settings); err != nil {
+		t.Fatalf("install: %v\n%s", err, out)
+	}
+
+	out, err := runStatus(t, bin, repo, settings, home, "status", ".")
+	if err == nil {
+		t.Fatal("want a non-zero exit: double-wiring is a real problem")
+	}
+	if !strings.Contains(out, "WARNING") || !strings.Contains(out, "runs onsetter hook twice") {
+		t.Errorf("status did not warn about double-wiring:\n%s", out)
 	}
 }
 

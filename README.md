@@ -1,50 +1,47 @@
 # onsetter
 
-Somebody was editing a location file.
+Somebody was editing `hook.go`.
 
-It was a Thursday, and the file was `creek_bridge.json`, and they had been at it
-an hour or so and were getting on rather well.
+It was a Tuesday, and the file was the one every `Write` and `Edit` in a
+session runs through, and they had been at it an hour or so and were getting
+on rather well.
 
-Then they wrote a line about the order the shift boss signed.
+Then they wrote a `panic()`, two calls downstream of a JSON field the caller
+always sets. Always.
 
-"Hallo," said a note. "How does the player know that?"
+"Hallo," said a note. "Is this path reachable from the hook?"
 
-"Know what?"
+"It can't be. The caller always sets that field."
 
-"That he signed it. You've written it as though they've been told."
+"Always is a word about a caller you don't control," said the note. "If it's
+wrong once, what happens here?"
 
-"They've met him."
+So the somebody looked, which is more than most people do on a Tuesday. The
+field came off disk, not off a struct literal, and nothing upstream of this
+line had ever checked it was there.
 
-"They have," said the note. "Meeting somebody isn't learning what they did.
-That's the one this keeps catching."
+"It's just for local testing," they said, hopefully.
 
-So the somebody looked, which is more than most people do on a Thursday. The
-player had met him once, in the diner, and had never been told about the order
-at all.
-
-"It's in the second context layer," they said, hopefully.
-
-It was not in the second context layer.
+It was not just for local testing. It shipped.
 
 ---
 
-The note is real. It lives in `corpus/CLAUDE.md`, fifty-five lines into an
-ordinary markdown file in an ordinary game repository, and it has been sitting
-there since March:
+The note is real. It lives in `CLAUDE.md`, seventeen lines into this
+repository's own ordinary markdown file, and it has been sitting there since
+the redesign that made a matched ask fire on every occurrence instead of once:
 
 ````markdown
 ```ask
-in: {locations,chars}/*/*.{json,effigy}
-when: ("text"|second_look|atmosphere|presence_lines|context_layers|description|"voice"|"dialogue")
+in: cmd/**/*.go
+not-in: **/main.go
+not-in: **/*_test.go
+when: os\.Exit\(|log\.Fatal|panic\(
 
-How would the player know this? Any name, relationship, motive, date, or
-inference the prose asserts has to be observable in-scene, a `{fact:X}` they
-actually gained, or what `{examined:X}` reveals. `{npc_met:X}` grounds surface
-identity only — meeting someone is not learning their backstory, and that is
-the loophole this keeps catching.
-
-If this is a payoff, does it surface the how-could-*they*-have-known
-impossibility? A payoff that only shows the anomaly lands soft.
+Everything reachable from `onsetter hook` stands in front of every Write and
+Edit in a session, and the only acceptable failure there is exit 0 with no
+output — bad JSON, a missing path, an unparseable block, a panic. Is this path
+reachable from the hook, and if it is, does something above it recover and exit
+0? If this is a subcommand that only ever runs from a terminal, continue.
 ```
 ````
 
@@ -56,15 +53,12 @@ the write lands, Claude receives this:
 ```
 onsetter — 1 ask for this edit. A repeat is marked, not hidden.
 
-▸ corpus/CLAUDE.md:55 · matched "description"
-How would the player know this? Any name, relationship, motive, date, or
-inference the prose asserts has to be observable in-scene, a {fact:X} they
-actually gained, or what {examined:X} reveals. {npc_met:X} grounds surface
-identity only — meeting someone is not learning their backstory, and that is
-the loophole this keeps catching.
-
-If this is a payoff, does it surface the how-could-*they*-have-known
-impossibility? A payoff that only shows the anomaly lands soft.
+▸ CLAUDE.md:17 · matched "panic("
+Everything reachable from `onsetter hook` stands in front of every Write and
+Edit in a session, and the only acceptable failure there is exit 0 with no
+output — bad JSON, a missing path, an unparseable block, a panic. Is this path
+reachable from the hook, and if it is, does something above it recover and exit
+0? If this is a subcommand that only ever runs from a terminal, continue.
 
 To retire one, delete its block from the file named above.
 ```
@@ -117,15 +111,15 @@ be made that precise has had exactly one home available: a document, read once
 at the top of a session and never again at the moment it applied.
 
 A question has almost no precision floor. Being wrong costs one sentence —
-*it's in the second context layer, continuing* — which is why every ask here
+*it's just for local testing, continuing* — which is why every ask here
 ends with that escape hatch. The asymmetry is the design. It opens a band
 nothing has served: conventions worth checking that can never be enforced.
 
 What lives in that band is the slow leak. Nothing these asks catch turns CI
 red. The build is green, the code reads fine, the value is recorded — and the
-cost arrives months later as a field nobody renders, a continuity break, a
-character who knows something they could not have learned, a regression lock
-that has never once been observed to fail.
+cost arrives months later as a field nobody renders, a state nobody
+persisted, an assumption the caller could not have verified, a regression
+lock that has never once been observed to fail.
 
 It is newly affordable because the reader is an agent. A person who meets a
 check that is often wrong learns to scroll past it, and then past the ones that
@@ -143,70 +137,73 @@ different tool; see [stull](https://github.com/justinstimatze/stull), below.
 
 ## The kinds of ask this holds
 
-The set below runs against a game corpus — a large body of authored text with
-strong internal consistency requirements and nothing that compiles it.
+The set below spans a few shapes of ordinary software convention — an error
+string, a handler's context lifetime, an accessible label, a comment's
+certainty, a regression lock — the kind of thing every codebase accumulates
+and nothing compiles.
 
 **Taste.**
 
 ```ask
-in: {locations,chars}/*/*.{json,effigy}
-when: (?i)\byou (nod|decide|realize|understand|turn away|find yourself)\b
+in: **/*.go
+not-in: **/*_test.go
+when: (?i)"(invalid input|bad request|something went wrong)"
 
-The narrator describes the world; the player decides what they do and what it
-means. Rewrite to observable world-state — the thing to turn toward, the
-sensory cause rather than the named feeling. If the match is genuinely sensory
-description, continue.
+An error message a caller has to guess the meaning of is worse than none. Name
+the field, the constraint it violated, and what a valid value looks like. If
+this string already carries all three, continue.
 ```
 
 **A design principle.**
 
 ```ask
-when: (?i)\b(you (should|need to|ought to|might want to|could try)|try (examining|looking|asking)|remember to|don.?t forget to)\b
+in: **/*handler*.go
+when: context\.Background\(\)|context\.TODO\(\)
 
-The game never tells the player what to do next — no quest markers, no
-progressive hints. Surface the affordance through the world instead: a visible
-object, an overheard line, an NPC's attention. If this is dialogue an NPC would
-plausibly say in character rather than engine guidance, continue.
+A handler that starts its own context instead of taking the caller's ignores
+a client's cancellation and any deadline this request is already running
+against. If this genuinely has to outlive the request — a background job the
+handler only kicks off — continue.
 ```
 
 **Accessibility**, where `not:` carves out the one legitimate shape.
 
 ```ask
-when: \([^)]{20,}\)
-not: \(open [a-z, ]+\)
+in: **/*.{tsx,jsx,html}
+when: <img\b
+not: alt=
 
-A body-register, sensation, or refusal line ships as plain italic dim with no
-parenthesized meta-voice — it is compound-meta and it hurts screen readers.
-Fold the aside into the prose. If this is ordinary description where the
-parenthetical reads well, continue.
+An `<img>` with no `alt` reads as nothing to a screen reader — not "image,"
+nothing. If this is genuinely decorative, `role="presentation"` says so on
+purpose instead of by omission. If alt text is already here, continue.
 ```
 
-**Epistemics**, where two `when:` lines are an AND — *touches a fact block* and
-*contains inference language* are two conditions over the whole file, and one
-regex cannot say it.
+**Epistemics**, where two `when:` lines are an AND — *names a symptom the code
+actually observed* and *asserts why it happened* are two conditions over the
+same span, and one regex cannot say it.
 
 ```ask
-when: (?i)(fact_text|"knowledge"|"source")
-when: (?i)\b(you realize|you can tell|this means|the pattern is|indicates that|suggests that|obviously|clearly)\b
+when: (?i)\b(timed out|timeout|connection reset|EOF)\b
+when: (?i)\b(because|caused by|due to|the server (was|is))\b
 
-`fact_text` is player-facing and should describe what is observable — visible,
-audible, tactile — not what it means. The inference belongs to the player. If
-this is a layer the player has already earned, continue.
+The code observed a symptom — a timeout, a reset connection — not a cause. A
+comment or log line asserting *why* it happened claims something the code
+never checked. If this traces back to a specific condition verified two lines
+up, continue.
 ```
 
 **A standard for the tests themselves**, gated on nothing but the filename,
-because every edit to those two files is the thing it is about:
+because every edit to a file matching it is the thing it is about:
 
 ```ask
-in: {test_playability_slice,test_playtest_regressions}.py
+in: **/*_regression_test.go
 
-This is a player-path regression lock. Before trusting it green, reintroduce
-the bug it guards and watch it go red — a lock you have not seen fail is
-theater.
+This is a regression lock. Before trusting it green, reintroduce the bug it
+guards and watch it go red — a lock you have not seen fail is theater.
 
-Anchor on something distinctive and deterministic: a unique token you grepped
-the corpus for first, the authored pool or source object, or `action_type`.
-Never a common word, and never one sampled line of a rotating pool.
+Anchor on something distinctive and deterministic: a real fixture value, a
+specific error type, a specific line of output. Never a substring so common it
+would also match the next bug in the same function.
 ```
 
 *A lock you have not seen fail is theater* is the standard the whole set is
@@ -439,9 +436,10 @@ directory, not to `.claude/`, so `in: internal/**/*.go` in
 
 ### Replay before you wire
 
-The corpus ask at the top of this page needs a game to run against, so try it
-on this repo instead. Its two asks live in the `CLAUDE.md` at the root. Add a
-third, written the way a first draft gets written:
+The ask at the top of this page is one of this repo's own two — both live in
+the `CLAUDE.md` at the root, so there's a real corpus to replay against
+without inventing one. Add a third, written the way a first draft gets
+written:
 
 ````markdown
 ```ask
@@ -460,26 +458,28 @@ Then ask what all three cost:
 
 ```
 $ onsetter replay 'cmd/**/*.go' 'internal/**/*.go'
-Replayed 10 file(s).
+Replayed 25 file(s).
 
-CLAUDE.md:47                           6/10      60.0%
+CLAUDE.md:49                           9/25      36.0%
+    cmd/onsetter/bash.go  "append("
+    cmd/onsetter/calib.go  "append("
     cmd/onsetter/hook.go  "append("
-    cmd/onsetter/inspect.go  "append("
-    cmd/onsetter/install.go  "append("
-CLAUDE.md:16                           1/10      10.0%
+CLAUDE.md:17                           1/25       4.0%
     cmd/onsetter/hook.go  "os.Exit("
-CLAUDE.md:35                           1/10      10.0%
-    ask/ask.go  "case \"in\":"
+CLAUDE.md:36                           0/25       0.0%
+    turned away at  in: ask/ask.go ×25
 
 A gate tripping on more than a few percent of what it matches is a tax.
 Narrow it, or move the ask closer to the files it is about.
 ```
 
-The new one fires on most of the Go files in the repo, where the two beside it
-barely fire at all. It is an ask that gets scrolled past by Thursday, and it
-reads perfectly well. In a repo with two hundred packages and
-the same `in:` narrowed to the five that hold mutable state, it is a good ask.
-Same regex, same prose, different blast radius — and nothing but a rate tells
+The new one fires on over a third of the Go files in this glob, where the two
+beside it either barely fire or — the third line — can't reach a single one of
+these 25, because its own `in:` scopes it to one file elsewhere in the repo on
+purpose. It is an ask that gets scrolled past by Thursday, and it reads
+perfectly well. In a repo with two hundred packages and the same `in:`
+narrowed to the five that hold mutable state, it is a good ask. Same regex,
+same prose, different blast radius — and nothing but a rate tells
 you which one you have.
 
 That is the whole discipline. Every first draft over-fires:
@@ -605,15 +605,17 @@ onsetter --version
 when an ask surprises you:
 
 ```
-$ onsetter list corpus/locations/quamash_1962/creek_bridge.json
-8 ask(s) govern corpus/locations/quamash_1962/creek_bridge.json
+$ onsetter list cmd/onsetter/hook.go
+2 ask(s) govern cmd/onsetter/hook.go
 
-▸ corpus/CLAUDE.md:55
-    in:        {locations,chars}/*/*.{json,effigy}   (relative to corpus)
-    when:      ("text"|second_look|atmosphere|presence_lines|context_layers|description|"voice"|"dialogue")
-    → would fire, matching "description"
-    How would the player know this? Any name, relationship, motive, date, or
-    inference the prose asserts has to be observable in-scene ...
+▸ CLAUDE.md:17
+    in:        cmd/**/*.go   (relative to .)
+    not-in:    **/main.go
+    not-in:    **/*_test.go
+    when:      os\.Exit\(|log\.Fatal|panic\(
+    → would fire, matching "os.Exit("
+    Everything reachable from `onsetter hook` stands in front of every Write
+    and Edit in a session, and the only acceptable failure there is exit 0 ...
 ```
 
 It also answers the harder question, which is why an ask you just wrote is
@@ -622,15 +624,17 @@ It also answers the harder question, which is why an ask you just wrote is
 says so instead:
 
 ```
-$ onsetter list corpus/chars/quamash_1962/art_callahan.json
-8 ask(s) govern corpus/chars/quamash_1962/art_callahan.json
+$ onsetter list cmd/onsetter/warm.go
+2 ask(s) govern cmd/onsetter/warm.go
 
-▸ corpus/CLAUDE.md:55
-    in:        {locations,chars}/*/*.{json,effigy}   (relative to corpus)
-    when:      ("text"|second_look|atmosphere|presence_lines|context_layers|description|"voice"|"dialogue")   ← nothing like it in the incoming text
+▸ CLAUDE.md:17
+    in:        cmd/**/*.go   (relative to .)
+    not-in:    **/main.go
+    not-in:    **/*_test.go
+    when:      os\.Exit\(|log\.Fatal|panic\(   ← nothing like it in the incoming text
     → would not fire · turned away at when:
-    How would the player know this? Any name, relationship, motive, date, or
-    inference the prose asserts has to be observable in-scene ...
+    Everything reachable from `onsetter hook` stands in front of every Write
+    and Edit in a session, and the only acceptable failure there is exit 0 ...
 ```
 
 Without the marker the loop is delete a header, rebuild, rerun, repeat.

@@ -1,0 +1,9 @@
+# version sha256-of-checksums.txt
+#
+# One line per released version, populated by `make pin-checksums VERSION=x.y.z`
+# once that version's GitHub Release is confirmed published. fetch.sh reads
+# this file to decide whether a downloaded checksums.txt is trustworthy — see
+# the comment at the top of scripts/fetch.sh for why checksums.txt alone,
+# fetched from the same mutable release as the binary it verifies, isn't
+# enough on its own. A version with no line here is refused, not trusted
+# unpinned.

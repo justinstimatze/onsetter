@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/fetch.sh",
+            "timeout": 90
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x \"${CLAUDE_PLUGIN_DATA}\"/bin/onsetter ] && exec \"${CLAUDE_PLUGIN_DATA}\"/bin/onsetter hook || exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}

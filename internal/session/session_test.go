@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -143,5 +144,44 @@ func TestBlankSessionIDNeverSuppresses(t *testing.T) {
 	s.Record(k)
 	if Open("").Count(k) != 0 {
 		t.Error("a store with no session id persisted something")
+	}
+}
+
+// Two Stores sharing a session id is the real-world shape of a plugin
+// install wiring the hook alongside a manual one, or a batch of parallel
+// tool calls each spawning their own onsetter process. Without a lock
+// around Record's read-modify-write, each process's write clobbers the
+// other's in-memory snapshot instead of merging with it, and the losing
+// increments vanish. This drives real concurrent processes, not goroutines
+// sharing memory, so it exercises the actual flock path rather than
+// something Go's race detector would catch for free.
+func TestConcurrentStoresDoNotLoseIncrements(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", dir)
+
+	const writers = 8
+	const perWriter = 25
+	k := Key("abc123", "you nod", "and you nod")
+
+	var wg sync.WaitGroup
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// A fresh Store per writer, matching how two real onsetter
+			// processes each call Open independently rather than sharing
+			// one in-memory Store — that in-memory sharing would trivially
+			// serialize the increments and prove nothing about the lock.
+			s := Open("sess-race")
+			for j := 0; j < perWriter; j++ {
+				s.Record(k)
+			}
+		}()
+	}
+	wg.Wait()
+
+	want := writers * perWriter
+	if got := Open("sess-race").Count(k); got != want {
+		t.Errorf("Count = %d after %d concurrent Records across %d stores, want %d — some increments were lost to the race", got, want, writers, want)
 	}
 }
