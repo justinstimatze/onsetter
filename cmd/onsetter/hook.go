@@ -33,10 +33,17 @@ type payload struct {
 // hook using this field, where it is not supported, and the block silently
 // failed schema validation on the first real compaction. Emitting from exactly
 // one place means that class of mistake has one place to be wrong.
+//
+// PermissionDecision/PermissionDecisionReason are set only when a matched
+// ask in this batch carries block: true — every other call leaves both at
+// their zero value and omitempty drops them, so an ordinary advisory firing
+// is byte-identical to what onsetter emitted before block: existed.
 type out struct {
 	HookSpecificOutput struct {
-		HookEventName     string `json:"hookEventName"`
-		AdditionalContext string `json:"additionalContext"`
+		HookEventName            string `json:"hookEventName"`
+		AdditionalContext        string `json:"additionalContext"`
+		PermissionDecision       string `json:"permissionDecision,omitempty"`
+		PermissionDecisionReason string `json:"permissionDecisionReason,omitempty"`
 	} `json:"hookSpecificOutput"`
 }
 
@@ -218,7 +225,8 @@ func dispatch(p payload, findAsks func(string) ([]*ask.Ask, []error)) (*out, err
 
 	base, _ := os.Getwd()
 	var b strings.Builder
-	// Not "check": a check is the thing that blocks, and this never blocks.
+	// Not "check": a check is the thing that blocks by default, and only a
+	// block: true ask ever does. Every other ask here still only informs.
 	noun := "asks"
 	if len(hits) == 1 {
 		noun = "ask"
@@ -228,6 +236,14 @@ func dispatch(p payload, findAsks func(string) ([]*ask.Ask, []error)) (*out, err
 		trigger = "read"
 	}
 	fmt.Fprintf(&b, "onsetter — %d %s for this %s. A repeat is marked, not hidden.\n", len(hits), noun, trigger)
+	// A hit only ever denies when it's a genuine, uncued match: block: true
+	// requires added:/removed: at parse time (ask.parseBlock), and Match sets
+	// Matched from whichever gate ran first, added/removed before when:/
+	// evokes: — so a non-empty Matched on a block: true ask always reflects
+	// the added/removed text, never a cued reach-through (Cascade never sets
+	// Matched on a cued hit) and never a bare when:-only reminder (block:
+	// true can't parse without added:/removed: in the first place).
+	var blockReasons []string
 	for _, h := range hits {
 		gate := "no content gate"
 		switch {
@@ -242,12 +258,20 @@ func dispatch(p payload, findAsks func(string) ([]*ask.Ask, []error)) (*out, err
 		if h.Ask.Always {
 			gate += " · always"
 		}
+		if h.Ask.Block && h.Matched != "" {
+			gate += " · blocks"
+			blockReasons = append(blockReasons, h.Ask.Body)
+		}
 		fmt.Fprintf(&b, "\n▸ %s · %s\n%s\n", h.Ask.Where(base), gate, h.Ask.Body)
 	}
 	b.WriteString("\nTo retire one, delete its block from the file named above.")
 
 	var o out
 	o.HookSpecificOutput.HookEventName = "PreToolUse"
+	if len(blockReasons) > 0 {
+		o.HookSpecificOutput.PermissionDecision = "deny"
+		o.HookSpecificOutput.PermissionDecisionReason = strings.Join(blockReasons, "\n\n")
+	}
 	o.HookSpecificOutput.AdditionalContext = b.String()
 	return &o, nil
 }

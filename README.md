@@ -174,6 +174,14 @@ moment doesn't remove that dependency — it aims the same mechanism more
 precisely. Removing it takes a check nothing gets a vote on. That's a
 different tool; see [stull](https://github.com/justinstimatze/stull), below.
 
+One narrow exception lives inside onsetter itself. `block: true` (see
+**Writing an ask**) removes exactly that vote, but only where the precision
+floor above stops applying: it's scoped to `added:`/`removed:`, the two gates
+that see the edit's own literal text rather than a guess, so denying on their
+match denies on something concrete, not a pattern that might be wrong a third
+of the time. It forces a retry of the one edit that tripped it, never a whole
+task — everything else on this page stays a question.
+
 ## The kinds of ask this holds
 
 The set below spans a few shapes of ordinary software convention — an error
@@ -272,10 +280,11 @@ order `replay` reports a funnel in:
 | `evokes` | the incoming text, semantically — not a regex | none |
 | `revisit` | nothing — retired, parses but does nothing; `lint` flags it | `false` |
 | `always` | nothing — skips the repeat count on a matched ask, or the once-per-session suppression on a reminder | `false` |
+| `block` | nothing — denies the write on a matched `added:`/`removed:` firing instead of only informing about it | `false` |
 | `name` | nothing — gives another ask something to cue | none |
 | `cues` | nothing — fires a second, named ask in the same injection | none |
 
-The last four never gate — none of them can turn a pending edit away, and
+The last five never gate — none of them can turn a pending edit away, and
 none appears in `replay`'s funnel.
 
 `when` and `not` see `content` on a Write and `new_string` on an Edit — the
@@ -465,6 +474,31 @@ instead. Width still costs here, more than most other asks: an unnarrowed
 one is one of the loudest injections this format can produce, marked or
 not, with no once-per-session amortization to fall back on for the matched
 class at all anymore.
+
+`PreToolUse` fires after the model has already committed to a tool call's
+exact arguments, so every ask above this one can only ever inform a *future*
+call — never correct the one that tripped it. A stray `print(` written and
+caught in the same `Write` shows up in `additionalContext` for the next edit,
+not this one. `block: true` closes that gap, and only for the one case where
+onsetter already has the offending text in hand rather than a guess:
+
+```ask
+in: **/*.go
+added: \bprint\(
+block: true
+
+A stray print( survives past review more often than it should. Remove it
+before this write lands, or use the project's logger instead.
+```
+
+Requires `added:` or `removed:` — parses only alongside one of them, since
+those are the two gates that hand back the edit's own literal text rather
+than a path glob or a fuzzy phrase. A matched firing sets
+`permissionDecision: deny` with this ask's prose as the reason, so Claude
+Code blocks the write and the model retries with the fix already in view —
+in the same turn, not the next one. A firing reached through `cues:` never
+denies, even on a `block: true` target: a cued hit never checks its own
+gate, so it never has anything concrete to point at either.
 
 Most blocks are one header and a paragraph. An ask in `corpus/CLAUDE.md` with
 no `in:` governs everything under `corpus/`, which is the scope its author can
@@ -666,7 +700,7 @@ $ onsetter list cmd/onsetter/hook.go
 ```
 
 It also answers the harder question, which is why an ask you just wrote is
-*not* firing. There are fifteen headers, and the one that rejected gets marked
+*not* firing. There are sixteen headers, and the one that rejected gets marked
 — unless a `cues:` from elsewhere reached it anyway, in which case `list`
 says so instead:
 
@@ -769,10 +803,11 @@ is about exactly this cost.
 - [**weir**](https://github.com/justinstimatze/weir) — shell commands.
   Capability probe and antipattern rewriter.
 - [**stull**](https://github.com/justinstimatze/stull) — anything needing a
-  state machine, a fuel budget, a model in the loop, or an actual block.
-  Where onsetter can only ask, stull can refuse outright — not a
-  better-worded question, a check nothing gets a vote on. onsetter is
-  deliberately not a mesh: one static hook, no branching, no LLM, no block.
+  state machine, a fuel budget, or a model in the loop. Where most of
+  onsetter can only ask, `block: true` forces a retry of the one edit that
+  tripped it — a narrow, per-ask, `added:`/`removed:`-only exception, not
+  stull's general-purpose refusal, a check nothing gets a vote on. onsetter
+  is deliberately not a mesh: one static hook, no branching, no LLM.
 - [**crystal**](https://github.com/justinstimatze/crystal) — moving work that
   *executes* onto deterministic tiers behind a verifier. Different payload;
   asks add a question where no call existed.
@@ -797,9 +832,11 @@ whose fix is judgement.
 Closest in mechanism: Anthropic's own `security-guidance` plugin, which ships
 enabled by default in Claude Code and gates `PostToolUse` on path *and*
 pending content, injecting advisory `additionalContext` from author-supplied
-rules — never blocking, the same shape this project's own header vocabulary
-takes. The difference is `PostToolUse` versus `PreToolUse`: its note arrives
-after the write has already landed, this one before.
+rules — never blocking, the shape most of this project's own header
+vocabulary still takes (`block: true` is the one opt-in exception, scoped to
+`added:`/`removed:` — see **Writing an ask**). The difference is
+`PostToolUse` versus `PreToolUse`: its note arrives after the write has
+already landed, this one before.
 
 The 55.0% at the top of this page is from **TRACE** — *Getting Better at
 Working With You: Compiling User Corrections into Runtime Enforcement for
@@ -819,8 +856,10 @@ state actually satisfied them. Averaged over six models:
 
 Read the last two rows against each other before believing onsetter works.
 Narrowing to the relevant rules bought one point. Compiling them into
-enforceable checks bought fifteen: evidence for enforcement, and onsetter
-does not enforce.
+enforceable checks bought fifteen: evidence for enforcement, and onsetter's
+default is still the advisory case above it. `block: true` (see **Writing an
+ask**) is a narrow, opt-in exception scoped to a single `added:`/`removed:`
+edit, not the general completion gate TRACE measured.
 
 What TRACE did not vary is *when*. Every condition there hands over its rules
 at prompt time, and onsetter's entire claim is about arrival at the tool call

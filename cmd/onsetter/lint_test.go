@@ -152,6 +152,59 @@ func TestLintDoesNotFlagRevisitOnAReminder(t *testing.T) {
 	}
 }
 
+// block: true with no added:/removed: is a parse error, not a silently-inert
+// header — cmdLint surfaces a parse error the same way it surfaces any other
+// bad block: printed to stderr, counted toward bad, non-zero exit.
+func TestLintFailsOnBlockWithoutAddedOrRemoved(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"),
+		"```ask\nwhen: TODO\nblock: true\n\nAsk.\n```\n")
+
+	got, err := lintIn(t, bin, repo)
+	if err == nil {
+		t.Fatal("want a non-zero exit: block: true with no added:/removed: does not parse")
+	}
+	if !strings.Contains(got, "block: true needs an added: or removed:") {
+		t.Errorf("lint does not surface the parse error's own reason:\n%s", got)
+	}
+}
+
+// A valid block: true ask — added: present, value spelled "true" — lints
+// exactly as clean as any other ask with a content gate.
+func TestLintCleanOnAValidBlockAsk(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"),
+		"```ask\nadded: \\bprint\\(\nblock: true\n\nNo print( in this repo.\n```\n")
+
+	got, err := lintIn(t, bin, repo)
+	if err != nil {
+		t.Fatalf("a valid block: true ask should lint clean: %v\n%s", err, got)
+	}
+}
+
+// block: true still requires added:/removed: to parse at all, so it falls
+// under the same on: read dead-combo check added: already trips — nothing
+// new to teach cmdLint, just confirmed end to end rather than assumed.
+func TestLintFailsOnReadCombinedWithBlock(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"),
+		"```ask\non: read\nadded: TODO\nblock: true\n\nAsk.\n```\n")
+
+	got, err := lintIn(t, bin, repo)
+	if err == nil {
+		t.Fatal("want a non-zero exit: on: read + added: can never fire, block: true or not")
+	}
+	if !strings.Contains(got, "added:") {
+		t.Errorf("lint does not name the dead gate:\n%s", got)
+	}
+}
+
 // A not-in: that excludes something other than everything is still a
 // banner everywhere else — the not-in: ** exemption must not be so loose
 // it swallows this case too.

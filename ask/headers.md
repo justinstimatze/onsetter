@@ -57,12 +57,12 @@ there means `~/.claude/projects/**/memory/feedback_*.md`; without the fix,
 memory file.
 
 
-## The fifteen headers
+## The sixteen headers
 
 Listed in the order `Match` applies them, which is the order `onsetter replay`
-reports a funnel in — except the last four. `revisit`, `always`, `name` and
-`cues` are never a reason a pending edit gets turned away; none of the four
-appears in that funnel at all.
+reports a funnel in — except the last five. `revisit`, `always`, `block`,
+`name` and `cues` are never a reason a pending edit gets turned away; none of
+the five appears in that funnel at all.
 
 | Header      | Matches                                   | Repeat means |
 |-------------|-------------------------------------------|--------------|
@@ -79,6 +79,7 @@ appears in that funnel at all.
 | `evokes`    | the incoming text, fuzzily — not a regex  | OR           |
 | `revisit`   | nothing — widens the session key instead  | last wins    |
 | `always`    | nothing — skips the session key entirely  | last wins    |
+| `block`     | nothing — denies the write instead of only informing about it | last wins |
 | `name`      | nothing — gives another ask something to cue | last wins |
 | `cues`      | nothing — fires a second ask by name      | cue each     |
 
@@ -358,6 +359,48 @@ count to skip there, since a reminder never gets one.
 Not a gate — Match never reads it, and `onsetter replay` never reports a
 rate for it.
 
+### `block:` — deny the write, not just inform about it
+
+```
+added: \bprint\(
+block: true
+```
+
+`PreToolUse` fires after the model has already committed to a tool call's
+exact arguments — every other ask here can only inform a *future* call, never
+correct the one that tripped it. A stray `print(` written and gated in the
+same `Write` shows up in `additionalContext` for the next edit, never for
+this one. `block: true` closes that gap: a matched firing sets
+`permissionDecision: deny` with this ask's own prose as the reason, Claude
+Code blocks the tool call, and the model gets a chance to retry with the
+correction already in front of it, in the same turn.
+
+Requires `added:` or `removed:` — this parses only alongside one of them, and
+`onsetter lint` cannot check it for you after the fact because a bad
+combination never gets the chance to exist. That restriction is the whole
+design: `added:`/`removed:` are the two gates that hand back the exact text
+in the edit, not a guess from a path or a fuzzy phrase, so denying on their
+match means denying on something concrete the model can see quoted back to
+it. A `when:`-only or `has:`-only ask stays advisory no matter what — there
+is nothing here to point at as the reason for a denial.
+
+Only a direct match blocks. A `block: true` ask reached by `cues:` never
+denies, even if its own gate would have matched something elsewhere — a cued
+hit never checks its own gate, so it has no quoted text to justify a denial
+with, the same reasoning `has:`-only and reminder asks fall under.
+
+Batching is unchanged: every matched ask in one call still coalesces into a
+single `additionalContext` block, blocking and advisory together, so denying
+on one ask's match never hides what the others found. The injected line
+marks a blocking hit the same way `always:` marks its own: `matched
+"print(" · blocks`.
+
+A real positioning shift, not a free add-on: onsetter's whole design has been
+advisory, never blocking, on purpose (see the README's own **Design**
+section). `block:` is opt-in, per ask, and scoped to the one case where
+onsetter already has the offending text in hand — reach for it only when a
+reminder arriving one call too late has demonstrably cost something.
+
 ### `name:` — a handle other asks can cue
 
 ```
@@ -435,6 +478,7 @@ gate — only a `cues:` from elsewhere can ever reach it.
 | a topic or a shape of reasoning, not a fixed string | `evokes:`         |
 | one ask's prose should also pull in a second one    | `cues:` (with `name:` on the target) |
 | a corpus where every matching edit is suspect, not just the first | `always: true` |
+| a Write/Edit that should be forced to retry with the fix in hand | `block: true` (with `added:`/`removed:`) |
 
 If a gate would need lookahead, split it across two `when:` lines. If it would
 need to exclude a directory, that is `not-in:`, not `not:`.
@@ -535,6 +579,13 @@ not just the first; there's no counter there to opt out of.
 `revisit:` is retired — its whole job was widening the key past the bare
 quote, and that widening is unconditional now. It still parses, so an
 existing block doesn't go dark; `onsetter lint` flags it as redundant.
+
+`block: true` doesn't change any of the counting above — it rides on
+whatever firing the ask would have had anyway, matched or cued, counted or
+not. What it adds is a second, independent effect on a direct match only:
+the response also denies the tool call, with this ask's prose as the reason,
+and the injected marker reads `matched "print(" · blocks` instead of the
+plain quote.
 
 The idea that a repeat still worth a fresh look, rather than the same
 answered question, is [treadiehq/codecut](https://github.com/treadiehq/codecut)'s

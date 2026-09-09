@@ -76,6 +76,7 @@ type Ask struct {
 	Evokes    []string // fuzzy trigger phrases; fires on any one, not all
 	Revisit   bool     // retired: every matched ask always widens now; kept so old blocks still parse
 	Always    bool     // skip the session key entirely — fires every match, no memory
+	Block     bool     // added:/removed: only — deny the edit instead of only informing about it
 	Name      string   // stable handle other asks can cue by; not part of ID()
 	Cues      []string // names of other asks to fire alongside this one
 	Body      string
@@ -128,13 +129,17 @@ type Edit struct {
 // no longer changes what Match or the hook do with an ask at all. It is
 // still parsed and stored on Ask, purely so an existing revisit: true block
 // keeps parsing instead of erroring; onsetter lint flags it as redundant.
+//
+// Block is included the same way Always is: it changes what response a
+// matched ask produces, and an author flipping it on mid-session should not
+// have to wait for a fresh session id before the new behavior takes effect.
 func (r *Ask) ID() string {
 	h := sha256.New()
-	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%t",
+	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%t\x00%t",
 		r.In, strings.Join(r.NotIn, "\x01"), reSrc(r.When), reSrc(r.Added),
 		reSrc(r.Removed)+"\x02"+reSrc(r.Has)+"\x03"+strings.Join(r.Untouched, "\x01"),
 		reSrc(r.Not), r.On, strings.Join(r.Evokes, "\x01"), r.Body,
-		strings.Join(r.Cues, "\x01"), r.Always)
+		strings.Join(r.Cues, "\x01"), r.Always, r.Block)
 	return hex.EncodeToString(h.Sum(nil))[:12]
 }
 
@@ -185,14 +190,15 @@ func Skill() string { return skill }
 // them. One list, so the parse error, the reference in `onsetter headers` and
 // the funnel in `onsetter replay` cannot disagree about what exists.
 //
-// `revisit`, `always`, `name` and `cues` are last and out of step with that
-// ordering on purpose: Match never looks at any of the four. `revisit` and
-// `always` are metadata the hook dispatcher reads afterward, to decide what
-// (if anything) the session key for a firing includes. `name` is only ever
-// read by another ask's `cues:`, and `cues:` itself is walked by Cascade,
-// not by Match — none of the four is a gate a pending edit can pass or fail
-// on its own.
-var Headers = []string{"requires", "in", "not-in", "on", "not", "has", "untouched", "added", "removed", "when", "evokes", "revisit", "always", "name", "cues"}
+// `revisit`, `always`, `block`, `name` and `cues` are last and out of step
+// with that ordering on purpose: Match never looks at any of the five.
+// `revisit`, `always` and `block` are metadata the hook dispatcher reads
+// afterward — the first two to decide what (if anything) the session key for
+// a firing includes, `block` to decide whether a matched firing also denies
+// the edit. `name` is only ever read by another ask's `cues:`, and `cues:`
+// itself is walked by Cascade, not by Match — none of the five is a gate a
+// pending edit can pass or fail on its own.
+var Headers = []string{"requires", "in", "not-in", "on", "not", "has", "untouched", "added", "removed", "when", "evokes", "revisit", "always", "block", "name", "cues"}
 
 // Result is the outcome of matching one ask against one edit. When it fired,
 // Matched is the text the content gate hit, so the injection can quote it
@@ -775,6 +781,11 @@ func parseBlock(lines []string, source, dir string, start int) (*Ask, error) {
 				return nil, fmt.Errorf("always: %q is not \"true\" (omit the header for the default)", v)
 			}
 			r.Always = true
+		case "block":
+			if strings.ToLower(v) != "true" {
+				return nil, fmt.Errorf("block: %q is not \"true\" (omit the header for the default)", v)
+			}
+			r.Block = true
 		case "name":
 			r.Name = v
 		case "cues":
@@ -787,6 +798,14 @@ func parseBlock(lines []string, source, dir string, start int) (*Ask, error) {
 	r.Body = strings.TrimSpace(strings.Join(lines[i:], "\n"))
 	if r.Body == "" {
 		return nil, fmt.Errorf("block has no prose after the headers — an ask with nothing to say cannot help")
+	}
+	// block: true denies the write in progress, so it has to point at
+	// something concrete in that same write — added: or removed:, the two
+	// gates that see the edit's own content rather than guessing from a
+	// glob or a reminder. A when:-only or has:-only ask has nothing to
+	// quote back as the reason for a denial.
+	if r.Block && len(r.Added)+len(r.Removed) == 0 {
+		return nil, fmt.Errorf("block: true needs an added: or removed: header — a when:-only ask has nothing concrete in hand to justify denying the write")
 	}
 	return r, nil
 }

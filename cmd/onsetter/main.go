@@ -98,8 +98,8 @@ An ask is a fenced block in any CLAUDE.md:
 
 Headers, one blank line, then the prose. Every header is optional, and they
 apply in this order — which is the order ` + "`replay`" + ` reports a funnel in,
-except the last four: ` + "`revisit`" + `, ` + "`always`" + `, ` + "`name`" + ` and ` + "`cues`" + `
-never gate, so none of the four ever appears there.
+except the last five: ` + "`revisit`" + `, ` + "`always`" + `, ` + "`block`" + `, ` + "`name`" + ` and ` + "`cues`" + `
+never gate, so none of the five ever appears there.
 
   requires   a binary resolving on $PATH — a fact about the machine, not the file
   in         glob, relative to this CLAUDE.md's directory  (default: all below)
@@ -114,6 +114,7 @@ never gate, so none of the four ever appears there.
   evokes     a fuzzy trigger phrase, not a regex — fires on any one, not all
   revisit    true — retired; every matched ask always widens now, lint flags it
   always     true — skips the repeat count on a match, or the once-per-session cap on a reminder
+  block      true — added:/removed: only; denies the write and gives the reason instead of only informing
   name       a handle another ask's cues: can point at
   cues       fires a second, named ask in the same injection, gate unchecked
 

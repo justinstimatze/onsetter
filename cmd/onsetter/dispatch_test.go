@@ -1,6 +1,7 @@
 package main
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -70,5 +71,145 @@ func TestDispatchEmptyFilePathReturnsNothing(t *testing.T) {
 	o, err := dispatch(p, findAsks)
 	if err != nil || o != nil {
 		t.Errorf("want (nil, nil) for an empty file_path, got (%v, %v)", o, err)
+	}
+}
+
+// Closes the gap IDEAS.md named directly: a block: true ask's matched
+// Write is denied in the same call that tripped it, not merely informed
+// about in additionalContext for some later call. Constructed directly, the
+// same way TestDispatchUsesInjectedFindAsks is, since Block only needs to be
+// true here — it doesn't need to have come through parseBlock's own
+// added:/removed: check to exercise dispatch's own behavior.
+func TestDispatchDeniesOnAMatchedBlockAsk(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	dir := t.TempDir()
+	target := dir + "/a.go"
+	blocking := &ask.Ask{
+		Dir: dir, In: "**", On: ask.ModeAny,
+		Added: []*regexp.Regexp{regexp.MustCompile(`\bprint\(`)},
+		Block: true, Body: "No print( in this repo.",
+	}
+	findAsks := func(string) ([]*ask.Ask, []error) { return []*ask.Ask{blocking}, nil }
+
+	p := payload{SessionID: "s", ToolName: "Write"}
+	p.ToolInput.FilePath = target
+	p.ToolInput.Content = "print(\"debug\")\n"
+
+	o, err := dispatch(p, findAsks)
+	if err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if o == nil {
+		t.Fatal("want a result: the blocking ask's added: gate matched")
+	}
+	if o.HookSpecificOutput.PermissionDecision != "deny" {
+		t.Errorf("want permissionDecision %q, got %q", "deny", o.HookSpecificOutput.PermissionDecision)
+	}
+	if !strings.Contains(o.HookSpecificOutput.PermissionDecisionReason, "No print( in this repo.") {
+		t.Errorf("permissionDecisionReason does not quote the blocking ask's own prose:\n%s", o.HookSpecificOutput.PermissionDecisionReason)
+	}
+	if !strings.Contains(o.HookSpecificOutput.AdditionalContext, "· blocks") {
+		t.Errorf("additionalContext does not mark the blocking hit:\n%s", o.HookSpecificOutput.AdditionalContext)
+	}
+}
+
+// The same ask, an edit its own added: gate does not match: no denial, no
+// permissionDecision at all — a block: true ask is exactly as narrow as its
+// own gate, never a blanket deny for the file.
+func TestDispatchDoesNotDenyOnAnUnrelatedWrite(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	dir := t.TempDir()
+	target := dir + "/a.go"
+	blocking := &ask.Ask{
+		Dir: dir, In: "**", On: ask.ModeAny,
+		Added: []*regexp.Regexp{regexp.MustCompile(`\bprint\(`)},
+		Block: true, Body: "No print( in this repo.",
+	}
+	findAsks := func(string) ([]*ask.Ask, []error) { return []*ask.Ask{blocking}, nil }
+
+	p := payload{SessionID: "s", ToolName: "Write"}
+	p.ToolInput.FilePath = target
+	p.ToolInput.Content = "package a\n"
+
+	o, err := dispatch(p, findAsks)
+	if err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if o != nil {
+		t.Errorf("want no result for an edit the blocking ask's added: gate did not match, got: %+v", o)
+	}
+}
+
+// A block: true ask reached only through cues: never denies — Cascade never
+// checks a cued ask's own gate (CascadeHit.Matched stays empty), so there is
+// no quoted text in hand to justify a denial with. This is the scoping
+// headers.md documents for `block:`, proven here rather than left as prose.
+func TestDispatchNeverDeniesOnACuedBlockAsk(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	dir := t.TempDir()
+	target := dir + "/a.go"
+	citer := &ask.Ask{
+		Dir: dir, In: "**", On: ask.ModeAny,
+		When: []*regexp.Regexp{regexp.MustCompile(`fetch\(`)},
+		Cues: []string{"b"}, Body: "Citer prose.",
+	}
+	cued := &ask.Ask{
+		Dir: dir, In: "**", On: ask.ModeAny,
+		Added: []*regexp.Regexp{regexp.MustCompile(`token`)},
+		Block: true, Name: "b", Body: "Cued blocking prose.",
+	}
+	findAsks := func(string) ([]*ask.Ask, []error) { return []*ask.Ask{citer, cued}, nil }
+
+	p := payload{SessionID: "s", ToolName: "Write"}
+	p.ToolInput.FilePath = target
+	p.ToolInput.Content = "fetch(url)\n" // trips citer's when:, never mentions "token"
+
+	o, err := dispatch(p, findAsks)
+	if err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if o == nil {
+		t.Fatal("want a result: the citer's own when: gate matched")
+	}
+	if o.HookSpecificOutput.PermissionDecision != "" {
+		t.Errorf("a cued block: true ask denied the edit even though its own gate never ran: %q", o.HookSpecificOutput.PermissionDecision)
+	}
+	if !strings.Contains(o.HookSpecificOutput.AdditionalContext, "Cued blocking prose.") {
+		t.Errorf("additionalContext does not include the cued ask's prose:\n%s", o.HookSpecificOutput.AdditionalContext)
+	}
+}
+
+// Multiple blocking asks matching the same edit join into one reason —
+// nothing dropped, matching the batch design the plan calls for.
+func TestDispatchJoinsMultipleBlockingReasons(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	dir := t.TempDir()
+	target := dir + "/a.go"
+	a := &ask.Ask{
+		Dir: dir, In: "**", On: ask.ModeAny,
+		Added: []*regexp.Regexp{regexp.MustCompile(`\bprint\(`)},
+		Block: true, Body: "No print(.",
+	}
+	b := &ask.Ask{
+		Dir: dir, In: "**", On: ask.ModeAny,
+		Added: []*regexp.Regexp{regexp.MustCompile(`fmt\.Println`)},
+		Block: true, Body: "No fmt.Println.",
+	}
+	findAsks := func(string) ([]*ask.Ask, []error) { return []*ask.Ask{a, b}, nil }
+
+	p := payload{SessionID: "s", ToolName: "Write"}
+	p.ToolInput.FilePath = target
+	p.ToolInput.Content = "print(\"x\")\nfmt.Println(\"y\")\n"
+
+	o, err := dispatch(p, findAsks)
+	if err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if o == nil {
+		t.Fatal("want a result: both blocking asks' added: gates matched")
+	}
+	if !strings.Contains(o.HookSpecificOutput.PermissionDecisionReason, "No print(.") ||
+		!strings.Contains(o.HookSpecificOutput.PermissionDecisionReason, "No fmt.Println.") {
+		t.Errorf("permissionDecisionReason does not carry both blocking asks' prose:\n%s", o.HookSpecificOutput.PermissionDecisionReason)
 	}
 }

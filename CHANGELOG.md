@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+- **New `block: true` header, closing the gap `CUSTOM_EVAL.md` and
+  `IDEAS.md` named directly: a `PreToolUse` hook can't correct the same
+  `Write` or `Edit` call that trips it, only a later one, because the model
+  has already committed to the tool call's exact arguments by the time the
+  hook runs.** Scoped to `added:`/`removed:` on purpose and enforced at
+  parse time — `block: true` with no `added:`/`removed:` on the same block
+  is now a parse error, not a silently-inert header — because those are the
+  two gates that hand back the edit's own literal text rather than a path
+  glob or a fuzzy phrase, so a denial always points at something concrete.
+  A matched, uncued firing sets `hookSpecificOutput.permissionDecision:
+  "deny"` with the ask's prose as `permissionDecisionReason`;
+  `additionalContext` still carries every matched ask's prose in the same
+  batch, blocking and advisory together, nothing dropped. A firing reached
+  only through `cues:` never denies — `Cascade` never checks a cued ask's
+  own gate, so it never has a quote to justify a denial with, the same
+  reasoning `has:`-only and reminder asks already fall under. `ID()` now
+  hashes `Block` the same way it already hashes `Always`. This is the
+  sixteenth header, following the four-place checklist an earlier ask in
+  this repo's own `CLAUDE.md` names for adding one: the `ask/ask.go` switch,
+  the `Headers` slice, a section plus table row in `ask/headers.md`, and the
+  header list in `ask/skill.md`'s frontmatter — plus a pass through
+  `README.md` and `SECURITY.md`, both of which had stated plainly, more
+  than once, that onsetter never blocks. That statement was true until this
+  change and is now an overclaim everywhere it appeared unqualified; fixed
+  in place rather than left to rot, since the whole design leans on that
+  claim being exactly true, not approximately true.
+
 - **First real `onsetter calib` run, against onsetter's own first `evokes:`
   ask.** Onsetter's own `CLAUDE.md` had zero `evokes:` asks until now —
   both existing blocks are `when:`-gated — so there was nothing for

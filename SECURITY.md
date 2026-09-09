@@ -73,8 +73,17 @@ write.
 gate matched, capped at 80 characters, injected as advisory context. A
 `CLAUDE.md` in a repository you did not write can therefore put text of its
 choosing in front of the model at edit time — the same trust you already extend
-to that file by opening the repository in Claude Code. onsetter cannot block a
-tool call and never executes anything from a rule.
+to that file by opening the repository in Claude Code. onsetter never executes
+anything from a rule.
+
+A rule can also set `block: true` — opt-in, and parses only alongside
+`added:` or `removed:` — which denies the tool call outright instead of only
+informing about it, with the rule's own prose as the reason Claude Code shows
+the model. This widens the same trust boundary above rather than opening a
+new one: a `CLAUDE.md` you did not write already puts arbitrary text in front
+of the model every edit, and `block: true` on it can now also force a retry
+of a matching edit, repeatedly if the model keeps reproducing the same
+match — never anything beyond that one tool call, never a whole session.
 
 A rule can also name a second rule via `cues:`, which injects that second
 rule's prose in the same block — with no substring at all, since a cued rule

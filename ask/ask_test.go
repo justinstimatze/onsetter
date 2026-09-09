@@ -788,18 +788,88 @@ func TestIDChangesWithAlways(t *testing.T) {
 	}
 }
 
+func TestBlockParsesAlongsideAddedOrRemoved(t *testing.T) {
+	added := parseOne(t, "```ask\nadded: TODO\nblock: true\n\nAsk.\n```\n")
+	if !added.Block {
+		t.Error("block: true did not set Block on an added: ask")
+	}
+	removed := parseOne(t, "```ask\nremoved: TODO\nblock: true\n\nAsk.\n```\n")
+	if !removed.Block {
+		t.Error("block: true did not set Block on a removed: ask")
+	}
+	plain := parseOne(t, "```ask\nadded: TODO\n\nAsk.\n```\n")
+	if plain.Block {
+		t.Error("an ask with no block: header should default to false")
+	}
+}
+
+// block: true only makes sense next to a gate that hands back the exact
+// text being denied — a when:-only or has:-only ask has nothing concrete to
+// point at, so this is a parse error, not a silently-inert combination.
+func TestBlockRequiresAddedOrRemoved(t *testing.T) {
+	for _, src := range []string{
+		"```ask\nwhen: TODO\nblock: true\n\nAsk.\n```\n",
+		"```ask\nhas: TODO\nblock: true\n\nAsk.\n```\n",
+		"```ask\nblock: true\n\nAsk.\n```\n",
+	} {
+		_, err := Parse(strings.NewReader(src), "/repo/CLAUDE.md")
+		if err == nil {
+			t.Errorf("block: true with no added:/removed: parsed cleanly, want an error: %s", src)
+		}
+	}
+}
+
+// "true" is the only accepted spelling, same reasoning as always:'s own test.
+func TestBlockRejectsAnyOtherValue(t *testing.T) {
+	for _, v := range []string{"false", "yes", "1"} {
+		_, err := Parse(strings.NewReader("```ask\nadded: TODO\nblock: "+v+"\n\nAsk.\n```\n"), "/repo/CLAUDE.md")
+		if err == nil {
+			t.Errorf("block: %s parsed cleanly, want an error", v)
+		}
+	}
+}
+
+// block: never gates — Match fires or rejects exactly the same with or
+// without it, because the hook dispatcher, not Match, is what reads it and
+// decides whether to deny.
+func TestBlockNeverAffectsMatch(t *testing.T) {
+	e := Edit{New: "TODO: fix this"}
+	plain := parseOne(t, "```ask\nadded: TODO\n\nAsk.\n```\n")
+	blocked := parseOne(t, "```ask\nadded: TODO\nblock: true\n\nAsk.\n```\n")
+	pm, pok := match(plain, e)
+	bm, bok := match(blocked, e)
+	if pok != bok || pm != bm {
+		t.Errorf("block: true changed Match's outcome: (%q, %v) vs (%q, %v)", pm, pok, bm, bok)
+	}
+}
+
+// Identity has to move with block: too, the same as always:.
+func TestIDChangesWithBlock(t *testing.T) {
+	a := parseOne(t, "```ask\nadded: TODO\n\nAsk.\n```\n")
+	b := parseOne(t, "```ask\nadded: TODO\nblock: true\n\nAsk.\n```\n")
+	if a.ID() == b.ID() {
+		t.Error("adding block: true did not change the ask's ID")
+	}
+}
+
 // Every header the parser accepts is in Headers, so the parse error, the
 // reference and replay's funnel cannot fall out of step with the switch.
 func TestHeadersListsEveryHeaderTheParserAccepts(t *testing.T) {
 	for _, h := range Headers {
 		v := "x"
+		prefix := ""
 		switch h {
 		case "on":
 			v = "mint"
 		case "revisit", "always":
 			v = "true"
+		case "block":
+			// block: true only parses alongside added: or removed: — see
+			// TestBlockRequiresAddedOrRemoved for that restriction itself.
+			v = "true"
+			prefix = "added: x\n"
 		}
-		if _, err := Parse(strings.NewReader("```ask\n"+h+": "+v+"\n\nAsk.\n```\n"), "/repo/CLAUDE.md"); err != nil {
+		if _, err := Parse(strings.NewReader("```ask\n"+prefix+h+": "+v+"\n\nAsk.\n```\n"), "/repo/CLAUDE.md"); err != nil {
 			t.Errorf("Headers lists %q but the parser rejects it: %v", h, err)
 		}
 	}
