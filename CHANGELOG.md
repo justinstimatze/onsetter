@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+- **First real `onsetter calib` run, against onsetter's own first `evokes:`
+  ask.** Onsetter's own `CLAUDE.md` had zero `evokes:` asks until now —
+  both existing blocks are `when:`-gated — so there was nothing for
+  `calib` to measure and no evidence behind `DefaultThreshold = 0.48`
+  beyond the two hand-picked pairs its own doc comment already admits to.
+  Wrote a real one (`CLAUDE.md:51`, gated on `in: **/*.md`, catching a
+  shipped-without-verification claim) and calibrated it three times against
+  hand-built 5-positive/5-negative corpora, rewording the `evokes:` phrase
+  each time per `calib`'s own stated remedy for an overlap. All three
+  overlapped at the 0.48 default — no threshold separated every example in
+  any of the three runs — and each failure was diagnosable, not random: the
+  first phrase asked for a citation-*presence* distinction (closer to a
+  `when:`-shaped lexical feature than a topic), the second asked for a
+  citation-*source-identity* distinction (which entity is being cited,
+  world-knowledge no local embedding model encodes), and the third — a
+  concrete action, phrased the way the README's own worked example is —
+  still landed `unrelated-instruction.md` above 3 of 5 genuine positives.
+  Real, repeated finding: `nomic-embed-text`'s document-level embedding has
+  thin resolution for fine-grained epistemic/behavioral distinctions *within*
+  a narrow, uniform-register domain (short technical software-engineering
+  markdown), even when it separates broad topics fine — the false-fire rate
+  at threshold 0.48 was 5/5 negatives in two of the three runs. Shipped the
+  third phrasing anyway: onsetter's own stated design ("Why a question and
+  not a check") is explicit that a wrong `evokes:` firing costs one sentence,
+  not a broken build, so an imperfectly-calibrated reminder is inside the
+  tolerance the whole project is built around, not a reason to withhold it —
+  but the real numbers are recorded here rather than a first-draft threshold
+  quietly standing in for evidence that was never actually gathered.
+  `IDEAS.md`'s "evokes:/warm/calib subsystem is onsetter's weakest,
+  least-calibrated part" entry is retired: it asked for exactly this
+  investigation pass, and this is what it found.
+
 - **The plugin now runs the hook as a persistent MCP server, `onsetter
   serve`, instead of a fresh process per call.** Built an on-disk ask-parse
   cache first, measured it, and found it didn't touch the real cost: a bare

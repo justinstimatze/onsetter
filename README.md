@@ -415,6 +415,11 @@ which is the whole reason this exists as a real tool rather than a hand-run
 scratch test: the number that matters is whichever example set an author
 actually built, not the two or three pairs it shipped measured against.
 
+This repo's own `evokes:` ask (`CLAUDE.md`) went through exactly that three
+times before shipping — every phrasing overlapped at the 0.48 default on a
+hand-built corpus, for three different, diagnosable reasons. See
+`CHANGELOG.md` for the real numbers and what each failure actually was.
+
 `name` and `cues` let one ask fire a second one by name — its gate is never
 consulted:
 
