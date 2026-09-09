@@ -46,14 +46,19 @@ func cmdStatus(args []string) error {
 	}
 
 	fmt.Println("\nplugin install")
-	bad += statusPlugin(wiringOK)
+	pluginBad, mcpConfigured := statusPlugin(wiringOK)
+	bad += pluginBad
 
 	fmt.Println("\ndiscovery")
 	asks, problems := statusDiscovery(dir)
 	bad += problems
 
 	fmt.Println("\non: read wiring")
-	bad += statusReadWiring(asks, readWired, dir)
+	// The plugin's mcp_tool transport wires Read unconditionally — no
+	// --read flag to check for, unlike the manual settings.local.json path
+	// readWired already covers. A plugin-only install with no manual entry
+	// at all must not misreport every on: read ask as unreachable.
+	bad += statusReadWiring(asks, readWired || mcpConfigured, dir)
 
 	fmt.Println("\nevokes: cache")
 	bad += statusEvokes(asks, dir)
@@ -196,18 +201,33 @@ func statusReadWiring(asks []*ask.Ask, readWired bool, dir string) int {
 // since enabledPlugins can be unset and still mean "enabled" (it falls back
 // to the plugin's defaultEnabled), so absence there proves nothing; a
 // populated cache or data directory is the more honest signal to check.
-func statusPlugin(manualWired bool) int {
+//
+// Returns mcpConfigured — whether an installed cached copy carries the
+// mcp_tool wiring (.mcp.json alongside it) — separately from bad, since a
+// cache hit without it is not a fault, only an older, still-working
+// version: the "configured" state this reports is static (does the file
+// exist and name the right shape), never a live connection claim, since a
+// one-shot status process has no channel into a running session's actual
+// MCP handshake.
+func statusPlugin(manualWired bool) (bad int, mcpConfigured bool) {
 	home := os.Getenv("HOME")
 	cacheHits, _ := filepath.Glob(filepath.Join(home, ".claude", "plugins", "cache", "*", "onsetter"))
 	dataHits, _ := filepath.Glob(filepath.Join(home, ".claude", "plugins", "data", "onsetter*"))
 
 	if len(cacheHits) == 0 && len(dataHits) == 0 {
 		fmt.Println("  no marketplace-installed onsetter found under ~/.claude/plugins")
-		return 0
+		return 0, false
 	}
 
 	for _, hit := range cacheHits {
 		fmt.Printf("  plugin cache: %s\n", shortOne(hit))
+		mcp := filepath.Join(hit, ".mcp.json")
+		if _, err := os.Stat(mcp); err == nil {
+			fmt.Println("  MCP server wiring: configured (mcp_tool) — connection state is not checked here, only that the file names it correctly")
+			mcpConfigured = true
+		} else {
+			fmt.Println("  MCP server wiring: not present in this cached copy — /plugin update to pick up onsetter serve")
+		}
 	}
 	for _, hit := range dataHits {
 		bin := filepath.Join(hit, "bin", "onsetter")
@@ -220,11 +240,11 @@ func statusPlugin(manualWired bool) int {
 	}
 
 	if !manualWired {
-		return 0
+		return 0, mcpConfigured
 	}
 	fmt.Println("  WARNING a manual install is also wired in settings.local.json — every Write/Edit/Bash call runs onsetter hook twice")
 	fmt.Println("  → keep one: uninstall the plugin, or remove the entry `onsetter install` wrote")
-	return 1
+	return 1, mcpConfigured
 }
 
 // statusDiscovery is lint's own walk, kept in sync deliberately: same

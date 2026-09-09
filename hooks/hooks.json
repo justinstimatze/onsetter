@@ -13,11 +13,23 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Write|Edit|Bash",
+        "matcher": "Write|Edit|Bash|Read",
         "hooks": [
           {
-            "type": "command",
-            "command": "[ -x \"${CLAUDE_PLUGIN_DATA}\"/bin/onsetter ] && exec \"${CLAUDE_PLUGIN_DATA}\"/bin/onsetter hook || exit 0"
+            "type": "mcp_tool",
+            "server": "plugin:onsetter:onsetter",
+            "tool": "hook",
+            "timeout": 5,
+            "input": {
+              "session_id": "${session_id}",
+              "tool_name": "${tool_name}",
+              "cwd": "${cwd}",
+              "file_path": "${tool_input.file_path}",
+              "content": "${tool_input.content}",
+              "new_string": "${tool_input.new_string}",
+              "old_string": "${tool_input.old_string}",
+              "command": "${tool_input.command}"
+            }
           }
         ]
       }

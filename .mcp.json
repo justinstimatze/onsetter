@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "onsetter": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/serve.sh",
+      "args": ["${CLAUDE_PLUGIN_DATA}"],
+      "timeout": 5000
+    }
+  }
+}

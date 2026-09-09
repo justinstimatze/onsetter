@@ -56,6 +56,11 @@ const usage = `onsetter — asks that arrive at the edit, not at session start.
 
   onsetter hook              PreToolUse dispatcher; reads the pending call on
                              stdin. This is the only thing settings.json runs.
+  onsetter serve             The same dispatcher as a persistent stdio MCP
+                             server, one tool ("hook"). What the plugin wires
+                             instead of "hook" — keeps every governing
+                             CLAUDE.md parsed once per session, not once per
+                             call. Not meant to be run by hand.
   onsetter install [--read]  Wire the hook into ~/.claude/settings.local.json
                              and write the authoring skill. Re-running converges.
                              --read also wires Read, for on: read asks — every
@@ -132,6 +137,8 @@ func main() {
 	switch args[0] {
 	case "hook":
 		err = cmdHook()
+	case "serve":
+		err = cmdServe()
 	case "install":
 		err = cmdInstall(args[1:])
 	case "list":

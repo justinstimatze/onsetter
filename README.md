@@ -100,13 +100,24 @@ repo before ever running it.
 /plugin install onsetter@onsetter
 ```
 
-The skill and the `on: read`-capable matcher below are both manual-install
-extras. The plugin's `hooks/hooks.json` wires `Write`/`Edit`/`Bash` only —
-there's no plugin equivalent of `--read` yet — and `skills/onsetter/SKILL.md`
-already ships with the plugin, so nothing else to run.
+The plugin wires the hook as a persistent MCP server (`onsetter serve`,
+`type: "mcp_tool"` in `hooks/hooks.json`), not a fresh process per call — the
+same `Write`/`Edit`/`Bash` matcher, plus `Read` unconditionally, since the
+cost that used to make `Read` an opt-in extra (a process spawn and a full
+`CLAUDE.md` re-parse on every call) doesn't apply to a connection Claude Code
+keeps warm for the session. `skills/onsetter/SKILL.md` already ships with the
+plugin, so nothing else to run.
 
-**As a Go binary**, for `on: read` support or if you'd rather build it
-yourself:
+Rarely — the very first session after installing, or one that starts mid an
+update's binary re-fetch — the server can fail to connect before the fetch
+finishes; `onsetter status` reports the wiring as configured but won't claim
+a live connection it can't see, since it's a one-shot process itself. If an
+ask stops firing right after install or an update, reconnect the server from
+`/mcp`, or just start a new session once the fetch has had time to finish.
+
+**As a Go binary**, if you'd rather build it yourself (this path still gates
+`on: read` behind `--read`, since a manually-wired hook is still one process
+per call):
 
 ```
 go install github.com/justinstimatze/onsetter/cmd/onsetter@latest
@@ -275,11 +286,14 @@ replacement span, not the whole file. Repeat `when`, `added`, `removed`,
 the opposite — a Read call, never a write — so it can never be paired with
 `when`, `added`, `removed`, `not`, or `evokes`: none of those ever see
 incoming text on a Read, and `onsetter lint` rejects the combination. `has`
-still works, since it reads disk content either way. `on: read` support also
-isn't wired by default: `onsetter install --read` adds it, because a Read
-happens far more often than a write and pays the full discovery walk each
-time — `onsetter status` flags an `on: read` ask sitting unreachable if you
-forget.
+still works, since it reads disk content either way. The plugin install wires
+`on: read` unconditionally — a Read happens far more often than a write, but
+the plugin's persistent server pays the discovery walk once per file, not
+once per call, so there's no per-Read cost left to gate behind a flag. The
+manual Go-binary install still gates it: `onsetter install --read` adds it,
+since that path is still one process per call and a Read happening far more
+often than a write means real added cost there — `onsetter status` flags an
+`on: read` ask sitting unreachable if you forget, on either install path.
 
 `requires` is checked before every other header — it is a fact about the
 machine running onsetter, not the file or the edit, so a rejection on a

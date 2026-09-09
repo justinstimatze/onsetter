@@ -413,6 +413,69 @@ func TestStatusReportsCueOutOfScope(t *testing.T) {
 	}
 }
 
+// A cached plugin copy that ships .mcp.json — the shape this phase adds —
+// has to read as "configured," not as unwired or as the older command-only
+// shape.
+func TestStatusReportsMCPWiringConfigured(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	settings := filepath.Join(t.TempDir(), "settings.local.json") // never written
+
+	home := t.TempDir()
+	cacheDir := filepath.Join(home, ".claude", "plugins", "cache", "v1-2-3", "onsetter")
+	mkdir(t, cacheDir)
+	write(t, filepath.Join(cacheDir, ".mcp.json"), `{"mcpServers":{"onsetter":{}}}`)
+
+	out, _ := runStatus(t, bin, repo, settings, home, "status", ".")
+	if !strings.Contains(out, "MCP server wiring: configured") {
+		t.Errorf("plugin section did not report the MCP wiring as configured:\n%s", out)
+	}
+}
+
+// A cached plugin copy that predates this change — no .mcp.json — has to
+// say so plainly rather than silently reading as configured or as an error.
+func TestStatusReportsMCPWiringMissingFromOlderCache(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	settings := filepath.Join(t.TempDir(), "settings.local.json")
+
+	home := t.TempDir()
+	cacheDir := filepath.Join(home, ".claude", "plugins", "cache", "v1-0-0", "onsetter")
+	mkdir(t, cacheDir) // no .mcp.json here — an older cached copy
+
+	out, _ := runStatus(t, bin, repo, settings, home, "status", ".")
+	if !strings.Contains(out, "MCP server wiring: not present in this cached copy") {
+		t.Errorf("plugin section did not report the missing MCP wiring:\n%s", out)
+	}
+}
+
+// The plugin's MCP transport wires Read unconditionally — a plugin-only
+// install (no manual --read, no manual install at all) still has to clear
+// the on: read unreachable report, since statusPlugin's mcpConfigured now
+// feeds into it.
+func TestStatusClearsOnReadReportForAPluginOnlyMCPInstall(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"), "```ask\non: read\n\nNever read the corpus directly.\n```\n")
+	settings := filepath.Join(t.TempDir(), "settings.local.json") // never written
+
+	home := t.TempDir()
+	cacheDir := filepath.Join(home, ".claude", "plugins", "cache", "v1-2-3", "onsetter")
+	mkdir(t, cacheDir)
+	write(t, filepath.Join(cacheDir, ".mcp.json"), `{"mcpServers":{"onsetter":{}}}`)
+
+	out, _ := runStatus(t, bin, repo, settings, home, "status", ".")
+	if strings.Contains(out, "UNREACHABLE") {
+		t.Errorf("a plugin-only MCP install should cover on: read without a manual --read flag:\n%s", out)
+	}
+	if !strings.Contains(out, "Read is wired") {
+		t.Errorf("status did not confirm Read is wired via the plugin's MCP transport:\n%s", out)
+	}
+}
+
 func TestStatusExitsZeroWhenEverythingIsFine(t *testing.T) {
 	bin := buildBinary(t)
 	repo := t.TempDir()

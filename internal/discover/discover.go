@@ -79,8 +79,32 @@ func Asks(path string) ([]*ask.Ask, []error) {
 // ParseSource parses one CLAUDE.md with its globs scoped correctly. Every
 // caller goes through here, so the `.claude/` exception is known in one place
 // rather than remembered in three.
+//
+// Every hook invocation is a fresh process, so an in-memory memoization
+// buys nothing across calls — what matters is the on-disk cache in
+// cache.go, checked here by path+mtime+size before ever reading src's
+// content. A file whose fingerprint doesn't match (or was never cached) is
+// parsed for real, then written back so the next call — the next Write,
+// Edit, Bash, or Read in this repo, from this session or the next one —
+// gets the fast path. If src can't even be stat'd, there is no fingerprint
+// to check; ParseFileScoped runs directly and surfaces whatever error
+// os.Open hits, same as the cache had never existed.
 func ParseSource(src string) ([]*ask.Ask, error) {
-	return ask.ParseFileScoped(src, scopeOf(src))
+	info, statErr := os.Stat(src)
+	if statErr != nil {
+		return ask.ParseFileScoped(src, scopeOf(src))
+	}
+	mtime, size := info.ModTime().UnixNano(), info.Size()
+
+	if asks, ok := Get(src, mtime, size); ok {
+		return asks, nil
+	}
+
+	asks, err := ask.ParseFileScoped(src, scopeOf(src))
+	if err == nil {
+		_ = Set(src, mtime, size, asks) // best-effort: a cache write failing must never break parsing
+	}
+	return asks, err
 }
 
 // scopeOf returns the directory a file's `in:` globs are relative to: the

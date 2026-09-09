@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+- **The plugin now runs the hook as a persistent MCP server, `onsetter
+  serve`, instead of a fresh process per call.** Built an on-disk ask-parse
+  cache first, measured it, and found it didn't touch the real cost: a bare
+  `onsetter hook` invocation has a ~5-8ms process-spawn floor underneath the
+  ~2.6ms parse cost of even a 150-ask `CLAUDE.md`, and no on-disk cache
+  removes a cost that exists before the cache file can be opened. Real
+  numbers, `go test -bench` against that same 150-ask fixture, real
+  subprocess client either way: ~15-17ms per call spawning fresh each time
+  vs. ~0.6-0.9ms per call over one persistent connection — roughly 20x.
+  `hooks/hooks.json`'s plugin-path `PreToolUse` entry moves from `type:
+  "command"` to `type: "mcp_tool"`, wiring `Read` unconditionally in the
+  same change (the cost that made it opt-in doesn't apply to a warm
+  connection). `cmd/onsetter/hook.go`'s dispatch logic split into a
+  transport-agnostic `dispatch()` shared by the CLI path (still `os.Exit(0)`
+  on a panic, unchanged) and the new MCP tool handler (`mcp-go`'s
+  `WithRecovery`, confirmed live to matter: without it, a panicking call
+  doesn't crash the process, it hangs forever with no response ever
+  written — worse than a clean exit, not just different from one). The
+  on-disk shard cache stays — real, sharding fixed a genuine bug where the
+  first design decoded every cached repo's data on every single lookup —
+  as the warm-across-processes fallback under `internal/discover.Warm`'s
+  new in-memory layer, and as what every one-shot CLI subcommand still
+  benefits from. The manual, non-plugin install (`onsetter install`) is
+  unchanged: still `type: "command"`, still `--read` opt-in, since that
+  path is still genuinely one process per call.
+
 - **Adds `EVAL.md`**, the first real attempt to test onsetter's own untested
   claim — that delivery at the tool call beats delivery at prompt time — by
   extending TRACE's own public ClawArena harness with a sixth condition

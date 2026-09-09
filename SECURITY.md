@@ -11,6 +11,16 @@ onsetter runs locally, with no configuration beyond the `CLAUDE.md` files
 already in your tree. It sends nothing to a network address beyond
 `localhost` — the one exception, `evokes:`, is covered below.
 
+The plugin install runs the hook as `onsetter serve`, a process Claude Code
+keeps alive for the whole session rather than spawning fresh per call — it
+holds every governing `CLAUDE.md`'s already-parsed rules in memory for as
+long as the session lasts, instead of nothing surviving between calls. It
+never reads anything beyond what the sections below already name, and stdio
+is still the only channel in or out; a session boundary is what ends its
+lifetime, same as `Write`/`Edit`/`Bash`/`Read` remain the same trust
+boundary either way. The manual Go-binary install is unaffected — still one
+process per call.
+
 **What it reads.** The `CLAUDE.md` and `CLAUDE.local.md` files between an
 edited file and its repository root, the pending tool call on stdin, and —
 only when an ask sets `requires:` — whether a named executable exists. That

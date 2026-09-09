@@ -48,9 +48,11 @@ type hit struct {
 	priorCount int
 }
 
-// cmdHook is the dispatcher. Every failure path here exits 0 with no output:
-// one hook standing in front of every Write and Edit is a single point of
-// failure, and the only acceptable failure is the silent, harmless kind.
+// cmdHook is the CLI transport: read stdin, dispatch, write stdout, exit 0
+// no matter what. One hook standing in front of every Write and Edit is a
+// single point of failure, and the only acceptable failure here is the
+// silent, harmless kind — os.Exit(0) is correct for a process that dies
+// with this call anyway.
 func cmdHook() error {
 	defer func() {
 		if r := recover(); r != nil {
@@ -67,9 +69,31 @@ func cmdHook() error {
 		return nil
 	}
 
+	o, err := dispatch(p, discover.Asks)
+	if err != nil || o == nil {
+		return nil
+	}
+	enc := json.NewEncoder(os.Stdout)
+	_ = enc.Encode(o)
+	return nil
+}
+
+// dispatch is the transport-agnostic core, shared by cmdHook (stdin JSON in,
+// stdout JSON out, dies with the process on a panic) and onsetter serve's
+// MCP tool handler (structured args in, a CallToolResult out, recovered
+// per-call by mcp-go's own WithRecovery middleware so one bad call never
+// takes the server down). Neither caller's panic policy belongs in here —
+// dispatch itself never recovers, so both callers stay free to apply their
+// own.
+//
+// findAsks is the discovery seam: cmdHook passes discover.Asks directly
+// (a fresh process gains nothing from an in-memory cache); serve passes its
+// own Warm-backed lookup, so this function never needs to know caching
+// exists on either side of it.
+func dispatch(p payload, findAsks func(string) ([]*ask.Ask, []error)) (*out, error) {
 	if p.ToolName == "Bash" {
 		recordBashTouches(p)
-		return nil
+		return nil, nil
 	}
 
 	isRead := p.ToolName == "Read"
@@ -79,7 +103,7 @@ func cmdHook() error {
 	}
 	path := p.ToolInput.FilePath
 	if path == "" {
-		return nil
+		return nil, nil
 	}
 	if abs, err := filepath.Abs(path); err == nil {
 		path = abs
@@ -87,18 +111,19 @@ func cmdHook() error {
 	_, statErr := os.Stat(path)
 	exists := statErr == nil
 
-	asks, _ := discover.Asks(path) // parse errors are lint's job, not the edit's
+	asks, _ := findAsks(path) // parse errors are lint's job, not the edit's
 	if len(asks) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	// Test-only fault injection for the recover() above (hook_test.go's
-	// TestHookRecoversFromARealPanic). Every other test that reaches this
-	// point exercises the real dispatch fully but never panics, which proved
-	// nothing about recover() itself — this env var doesn't exist in any
-	// documented interface and a real session will never set it; it's read
-	// once, after real parsing and discovery already ran, so the test proves
-	// recover() catches a fault mid-dispatch, not just at the entry.
+	// Test-only fault injection (hook_test.go's TestHookRecoversFromARealPanic
+	// and serve_test.go's equivalent for the MCP path). Every other test that
+	// reaches this point exercises the real dispatch fully but never panics,
+	// which proved nothing about either caller's recovery — this env var
+	// doesn't exist in any documented interface and a real session will
+	// never set it; it's read once, after real parsing and discovery already
+	// ran, so the test proves recovery catches a fault mid-dispatch, not
+	// just at the entry.
 	if os.Getenv("ONSETTER_TEST_PANIC") != "" {
 		panic("onsetter: deliberate test panic")
 	}
@@ -187,7 +212,7 @@ func cmdHook() error {
 		store.Touch(path)
 	}
 	if len(hits) == 0 {
-		return nil
+		return nil, nil
 	}
 	store.Record(ids...)
 
@@ -224,7 +249,5 @@ func cmdHook() error {
 	var o out
 	o.HookSpecificOutput.HookEventName = "PreToolUse"
 	o.HookSpecificOutput.AdditionalContext = b.String()
-	enc := json.NewEncoder(os.Stdout)
-	_ = enc.Encode(o)
-	return nil
+	return &o, nil
 }
