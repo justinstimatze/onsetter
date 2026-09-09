@@ -16,7 +16,7 @@ func runIn(t *testing.T, bin, dir, cache string, args ...string) (string, error)
 	t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "XDG_CACHE_HOME="+cache)
+	cmd.Env = append(os.Environ(), "XDG_CACHE_HOME="+cache, "GOCOVERDIR="+goCoverDir(t))
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

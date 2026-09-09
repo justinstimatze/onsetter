@@ -93,6 +93,68 @@ func TestInstallConvergesOnRerun(t *testing.T) {
 	}
 }
 
+// Invalid JSON already sitting at the settings path is refused outright
+// rather than overwritten — a hand-broken or mid-write file from some other
+// tool should never silently lose its contents to an install run.
+func TestInstallRefusesInvalidSettingsJSON(t *testing.T) {
+	dir := t.TempDir()
+	settings := filepath.Join(dir, "settings.local.json")
+	if err := os.WriteFile(settings, []byte("{ not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := cmdInstall([]string{settings})
+	if err == nil {
+		t.Fatal("want an error: settings.local.json is not valid JSON")
+	}
+	if !strings.Contains(err.Error(), "not valid JSON") {
+		t.Errorf("error does not say the file is invalid JSON: %v", err)
+	}
+	b, rerr := os.ReadFile(settings)
+	if rerr != nil || string(b) != "{ not json" {
+		t.Errorf("refused install still touched the file: %v, %q", rerr, b)
+	}
+}
+
+// writeSkill's own MkdirAll fails when a path component it needs to create is
+// already a plain file rather than a directory — the shape any install hits
+// if something else already occupies "skills" under the target .claude dir.
+func TestWriteSkillFailsWhenSkillsPathIsAFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "skills"), []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := writeSkill(dir); err == nil {
+		t.Fatal("want an error: skills/ cannot be created where a file of that name already exists")
+	}
+}
+
+// writeSkill's WriteFile fails when the target directory exists but is not
+// writable — MkdirAll is a no-op on an already-existing directory, so this
+// is the one failure MkdirAll succeeding can still be followed by. Rename's
+// own failure mode needs a cross-device or permission change mid-call that
+// cannot be forced portably from a unit test — same accepted-gap shape as
+// install.go's os.Executable() branch.
+func TestWriteSkillFailsWhenDirNotWritable(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory write permission bits")
+	}
+	dir := t.TempDir()
+	skillDir := filepath.Join(dir, "skills", "onsetter")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(skillDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(skillDir, 0o755) // let t.TempDir() clean up afterward
+
+	if _, err := writeSkill(dir); err == nil {
+		t.Fatal("want an error: the skill directory is not writable")
+	}
+}
+
 // --read is opt-in and reversible: it adds a second PreToolUse entry, and a
 // plain re-install without the flag removes it — the flags a given run
 // passes are the whole desired state, the same convergence rule the base

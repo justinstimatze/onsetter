@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ func replayIn(t *testing.T, bin, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(bin, append([]string{"replay"}, args...)...)
 	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOCOVERDIR="+goCoverDir(t))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("replay: %v\n%s", err, out)

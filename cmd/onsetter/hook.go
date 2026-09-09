@@ -92,6 +92,17 @@ func cmdHook() error {
 		return nil
 	}
 
+	// Test-only fault injection for the recover() above (hook_test.go's
+	// TestHookRecoversFromARealPanic). Every other test that reaches this
+	// point exercises the real dispatch fully but never panics, which proved
+	// nothing about recover() itself — this env var doesn't exist in any
+	// documented interface and a real session will never set it; it's read
+	// once, after real parsing and discovery already ran, so the test proves
+	// recover() catches a fault mid-dispatch, not just at the entry.
+	if os.Getenv("ONSETTER_TEST_PANIC") != "" {
+		panic("onsetter: deliberate test panic")
+	}
+
 	store := session.Open(p.SessionID)
 	ev := ask.Edit{
 		Path: path, New: content, Old: p.ToolInput.OldString,

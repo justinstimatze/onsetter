@@ -4,7 +4,7 @@
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
 
-.PHONY: install build test lint check version wire pin-checksums
+.PHONY: install build test coverage lint check version wire pin-checksums
 
 # Install to $GOBIN/$GOPATH/bin with the version baked in.
 install:
@@ -22,6 +22,21 @@ wire: install
 
 test:
 	go test ./...
+
+# cmd/onsetter's own tests mostly build an instrumented binary (buildBinary,
+# -cover) and drive it with exec.Command — plain `go test -cover` can't see
+# into a subprocess, so it reports a number that's mostly a measurement
+# artifact, not real missing coverage. GOCOVERDIR is the fix, but `go test`
+# rewrites that env var for its own internal use before a test binary ever
+# reads it — ONSETTER_TEST_GOCOVERDIR is a second name goCoverDir(t) (in
+# hook_test.go) reads instead, so a subprocess's own GOCOVERDIR can still be
+# set to the same shared dir. -test.gocoverdir points the test binary's own
+# in-process coverage at that same dir, so both sources land in one place.
+coverage:
+	@dir=$$(mktemp -d) && \
+	trap 'rm -rf "$$dir"' EXIT && \
+	ONSETTER_TEST_GOCOVERDIR=$$dir GOCOVERDIR=$$dir go test ./... -cover -args -test.gocoverdir=$$dir && \
+	go tool covdata percent -i=$$dir
 
 lint:
 	golangci-lint run

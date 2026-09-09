@@ -30,11 +30,42 @@ func TestOutputShapeIsLegalForPreToolUse(t *testing.T) {
 func buildBinary(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "onsetter")
-	cmd := exec.Command("go", "build", "-o", bin, ".")
+	// -cover instruments the binary so a subprocess run of it (which is how
+	// every test in this package exercises it — JSON over stdin, exactly the
+	// way Claude Code does) contributes real coverage data instead of being
+	// invisible to `go test -cover`, which only ever sees the test binary's
+	// own in-process calls. Confirmed separately that an instrumented binary
+	// still flushes counters on a bare os.Exit(0) path (this package's own
+	// dispatch shape) as long as GOCOVERDIR is set — see goCoverDir below.
+	cmd := exec.Command("go", "build", "-cover", "-o", bin, ".")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 	return bin
+}
+
+// goCoverDir resolves where a -cover-built subprocess should write its
+// coverage counters. `go test` reserves the GOCOVERDIR name for its own
+// in-process instrumentation — it rewrites whatever the shell exported into
+// an internal go-build scratch path before the test binary ever sees it
+// (confirmed directly: printing os.Getenv("GOCOVERDIR") from inside a test
+// shows .../go-build.../b001/gocoverdir, never the shell's own value) — so
+// `make coverage` passes the shared directory through a distinct name,
+// ONSETTER_TEST_GOCOVERDIR, that go test has no reason to touch. Falling
+// back to the test's own TempDir when it isn't set (the plain `go test ./...`
+// path) matters for a reason beyond just "coverage gets dropped": an
+// instrumented binary run with GOCOVERDIR unset prints "warning: GOCOVERDIR
+// not set" to stderr on every invocation, which corrupts any test asserting
+// on cmd.CombinedOutput() (runIn/runStatus, below) — always setting it, even
+// to a directory nobody reads afterward, is what keeps every existing
+// output-content assertion in this package correct regardless of how the
+// suite is invoked.
+func goCoverDir(t *testing.T) string {
+	t.Helper()
+	if d := os.Getenv("ONSETTER_TEST_GOCOVERDIR"); d != "" {
+		return d
+	}
+	return t.TempDir()
 }
 
 // run invokes the built hook the way Claude Code does: JSON on stdin.
@@ -46,7 +77,7 @@ func run(t *testing.T, bin, cache string, p map[string]any) string {
 	}
 	cmd := exec.Command(bin, "hook")
 	cmd.Stdin = strings.NewReader(string(in))
-	cmd.Env = append(os.Environ(), "XDG_CACHE_HOME="+cache)
+	cmd.Env = append(os.Environ(), "XDG_CACHE_HOME="+cache, "GOCOVERDIR="+goCoverDir(t))
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("hook: %v", err)
@@ -268,7 +299,7 @@ func TestHookFailsOpen(t *testing.T) {
 	} {
 		cmd := exec.Command(bin, "hook")
 		cmd.Stdin = strings.NewReader(stdin)
-		cmd.Env = append(os.Environ(), "XDG_CACHE_HOME="+cache)
+		cmd.Env = append(os.Environ(), "XDG_CACHE_HOME="+cache, "GOCOVERDIR="+goCoverDir(t))
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Errorf("%s: exited non-zero (%v): %s", name, err, out)
@@ -276,6 +307,41 @@ func TestHookFailsOpen(t *testing.T) {
 		if len(out) != 0 {
 			t.Errorf("%s: emitted output: %s", name, out)
 		}
+	}
+}
+
+// Every input TestHookFailsOpen feeds is absorbed by an earlier explicit
+// return nil (bad JSON, empty input) — none of them ever reaches the
+// deferred recover() at all, so that test proves ordinary error handling
+// works, not that a genuine panic gets caught. This one forces a real panic
+// partway through the real dispatch path (after stdin parsing and ask
+// discovery have already run, via ONSETTER_TEST_PANIC — see hook.go) and
+// asserts the same contract: exit 0, no output.
+func TestHookRecoversFromARealPanic(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	cache := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"), "```ask\nwhen: alpha\n\nAsk.\n```\n")
+	target := filepath.Join(repo, "a.md")
+	write(t, target, "x")
+
+	in, err := json.Marshal(map[string]any{
+		"session_id": "s", "tool_name": "Write",
+		"tool_input": map[string]any{"file_path": target, "content": "alpha"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(bin, "hook")
+	cmd.Stdin = strings.NewReader(string(in))
+	cmd.Env = append(os.Environ(), "XDG_CACHE_HOME="+cache, "GOCOVERDIR="+goCoverDir(t), "ONSETTER_TEST_PANIC=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Errorf("a real panic mid-dispatch should still exit 0, got %v:\n%s", err, out)
+	}
+	if len(out) != 0 {
+		t.Errorf("a recovered panic should still emit nothing, got:\n%s", out)
 	}
 }
 

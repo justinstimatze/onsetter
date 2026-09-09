@@ -18,7 +18,7 @@ func runStatus(t *testing.T, bin, dir, settings, cache string, args ...string) (
 	t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "CLAUDE_SETTINGS="+settings, "XDG_CACHE_HOME="+cache, "HOME="+cache)
+	cmd.Env = append(os.Environ(), "CLAUDE_SETTINGS="+settings, "XDG_CACHE_HOME="+cache, "HOME="+cache, "GOCOVERDIR="+goCoverDir(t))
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -328,6 +328,88 @@ func TestStatusWarnsOnDoubleWiring(t *testing.T) {
 	}
 	if !strings.Contains(out, "WARNING") || !strings.Contains(out, "runs onsetter hook twice") {
 		t.Errorf("status did not warn about double-wiring:\n%s", out)
+	}
+}
+
+// Invalid JSON in the settings file is a distinct failure from the file not
+// existing at all — status has to name it as "not valid JSON" rather than
+// reading it as "not found" and pointing at `onsetter install`, which would
+// silently overwrite a file some other tool left mid-write.
+func TestStatusReportsInvalidSettingsJSON(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	settings := filepath.Join(t.TempDir(), "settings.local.json")
+	write(t, settings, "{ not json")
+
+	out, err := runStatus(t, bin, repo, settings, t.TempDir(), "status", ".")
+	if err == nil {
+		t.Fatal("want a non-zero exit: settings.local.json is not valid JSON")
+	}
+	if !strings.Contains(out, "not valid JSON") {
+		t.Errorf("wiring section does not say the file is invalid JSON:\n%s", out)
+	}
+}
+
+// Valid JSON with no onsetter entry at all (a settings file some other tool
+// owns, or one onsetter never wired) is a third distinct wiring state, past
+// "not found" and "not valid JSON" — status has to name it separately too.
+func TestStatusReportsSettingsWithNoOnsetterEntry(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	settings := filepath.Join(t.TempDir(), "settings.local.json")
+	write(t, settings, `{"hooks": {}}`)
+
+	out, err := runStatus(t, bin, repo, settings, t.TempDir(), "status", ".")
+	if err == nil {
+		t.Fatal("want a non-zero exit: no onsetter entry in PreToolUse")
+	}
+	if !strings.Contains(out, "no onsetter entry in PreToolUse") {
+		t.Errorf("wiring section does not say onsetter is missing from PreToolUse:\n%s", out)
+	}
+}
+
+// statusCues shares ValidateCues with lint, but every existing test for
+// duplicate-name and cue-out-of-scope only ever exercises it through
+// cmdLint. This is the same check through cmdStatus, which builds its own
+// asks list via statusDiscovery rather than lint's.
+func TestStatusReportsDuplicateName(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"), ""+
+		"```ask\nname: dup\n\nFirst.\n```\n\n"+
+		"```ask\nname: dup\n\nSecond.\n```\n")
+	settings := filepath.Join(t.TempDir(), "settings.local.json")
+
+	out, err := runStatus(t, bin, repo, settings, t.TempDir(), "status", ".")
+	if err == nil {
+		t.Fatal("want a non-zero exit: two asks declare the same name:")
+	}
+	if !strings.Contains(out, `DUPLICATE name: "dup"`) {
+		t.Errorf("cues: section does not name the duplicated value:\n%s", out)
+	}
+}
+
+// A cues: target declared below the citer's own directory resolves in a
+// whole-repo view but discover.Asks only ever walks upward from an edited
+// file, so it can never actually be reached at hook time.
+func TestStatusReportsCueOutOfScope(t *testing.T) {
+	bin := buildBinary(t)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".git"))
+	write(t, filepath.Join(repo, "CLAUDE.md"), "```ask\ncues: nested\n\nCiting question.\n```\n")
+	mkdir(t, filepath.Join(repo, "sub"))
+	write(t, filepath.Join(repo, "sub", "CLAUDE.md"), "```ask\nname: nested\n\nTarget.\n```\n")
+	settings := filepath.Join(t.TempDir(), "settings.local.json")
+
+	out, err := runStatus(t, bin, repo, settings, t.TempDir(), "status", ".")
+	if err == nil {
+		t.Fatal("want a non-zero exit: the cued target is out of the citer's reachable scope")
+	}
+	if !strings.Contains(out, `OUT-OF-SCOPE cues: "nested"`) {
+		t.Errorf("cues: section does not name the out-of-scope value:\n%s", out)
 	}
 }
 

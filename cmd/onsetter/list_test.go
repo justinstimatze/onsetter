@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ func listIn(t *testing.T, bin, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(bin, append([]string{"list"}, args...)...)
 	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOCOVERDIR="+goCoverDir(t))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("list: %v\n%s", err, out)

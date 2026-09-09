@@ -116,6 +116,57 @@ func TestScopeOfProjectDotClaudeStillScopesToParent(t *testing.T) {
 	}
 }
 
+// Roots has no direct test anywhere — every existing check exercises it only
+// behaviorally, through cmd/onsetter's subprocess tests, and even those only
+// ever cover the ".git present" case. This is the other half: a target with
+// no .git anywhere between it and $HOME, which is the deliberate fallback
+// this package's own doc comment names as what bounds an ask's blast radius
+// when there's no repo root to stop at. Confirms the walk actually climbs
+// all the way to $HOME and stops there — picking up a CLAUDE.md placed at
+// $HOME itself — rather than silently walking past it to "/" or missing it.
+func TestRootsStopsAtHomeWhenNoGitExists(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	fence := "```"
+	write(t, filepath.Join(home, "CLAUDE.md"), fence+"ask\nwhen: alpha\n\nAsk.\n"+fence+"\n")
+
+	// A fresh, not-yet-git-init'd project directly under $HOME — no .git
+	// anywhere in its ancestor chain.
+	target := filepath.Join(home, "fresh-project", "a.md")
+	write(t, target, "x")
+
+	roots := Roots(target)
+	if len(roots) != 1 {
+		t.Fatalf("got %v, want exactly the $HOME/CLAUDE.md fallback", roots)
+	}
+	if roots[0] != filepath.Join(home, "CLAUDE.md") {
+		t.Errorf("got %q, want the $HOME CLAUDE.md", roots[0])
+	}
+}
+
+// The same boundary, confirmed from the other side: a CLAUDE.md sitting
+// above $HOME (in $HOME's own parent) must never govern a file under a
+// git-root-less project inside $HOME — the walk has to actually stop at
+// $HOME, not just happen to find the right file first.
+func TestRootsNeverReachesAboveHomeWithoutGit(t *testing.T) {
+	above := t.TempDir()
+	home := filepath.Join(above, "home")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	fence := "```"
+	write(t, filepath.Join(above, "CLAUDE.md"), fence+"ask\nwhen: alpha\n\nShould never be reached.\n"+fence+"\n")
+
+	target := filepath.Join(home, "fresh-project", "a.md")
+	write(t, target, "x")
+
+	roots := Roots(target)
+	if len(roots) != 0 {
+		t.Errorf("got %v, want nothing — the walk must stop at $HOME, not climb past it", roots)
+	}
+}
+
 // The headerless block is the format's sharpest edge: written the obvious way
 // it does not parse, and the error has to say why rather than complain that a
 // sentence is not `key: value`.
