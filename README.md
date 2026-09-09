@@ -810,7 +810,10 @@ and leaves this particular fix unproven. The honest scope of what is measured
 here is narrower: fire rates, and blocks that agreed with the shell scripts
 they replaced. [`EVAL.md`](EVAL.md) documents a direct attempt to close that
 gap against TRACE's own evaluation harness, and the mismatch it surfaced
-instead.
+instead. [`CUSTOM_EVAL.md`](CUSTOM_EVAL.md) is the follow-up that fixed the
+instrument and ran the comparison for real: same rule content delivered at
+the tool call versus always in context, on 36 purpose-built scenarios —
+onsetter's own channel wins, p ≈ 0.0007.
 
 What onsetter adds beyond either is that the ask and the content it governs
 live in the same directory, so the ask moves when the content does.

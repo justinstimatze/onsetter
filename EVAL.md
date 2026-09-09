@@ -150,3 +150,7 @@ own headline number came from a mechanism that blocks, which isn't
 onsetter's and isn't even what the public harness code ships as "TRACE."
 What's real: the mechanism works, the isolation is clean, and this
 dataset is the wrong instrument to test it against.
+
+[`CUSTOM_EVAL.md`](CUSTOM_EVAL.md) is the follow-up that built the right one —
+a purpose-built scenario pack where every round is addressable, and an actual
+prompt-time control holding rule content identical to onsetter's own.

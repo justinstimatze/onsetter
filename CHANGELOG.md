@@ -16,6 +16,22 @@
   "TRACE." Not a null result; the instrument was the wrong one to test the
   claim against. README's TRACE citation now points to it.
 
+- **Adds `CUSTOM_EVAL.md`**, the follow-up that ran the comparison `EVAL.md`
+  couldn't: a purpose-built, 36-scenario pack where every round carries a
+  real, onsetter-addressable check, plus a third condition (`prompt_always`)
+  that holds rule content identical to onsetter's own and varies only the
+  channel — always in context versus delivered at the tool call. 432 real
+  calls, $73.32. On 72 held-out paired rounds: onsetter 97.2% vs.
+  `prompt_always` 76.4% vs. no-memory 0%; onsetter vs. `prompt_always`
+  (the actual novel comparison) at 19 discordant pairs, p ≈ 0.00073. Also
+  fixes a real confound found before any data was collected — onsetter's
+  condition was leaking its own rule text into Claude Code's native
+  `CLAUDE.md` auto-load, a channel the harness's own prompt payload never
+  touched or accounted for — and names two genuine `onsetter_native_cc`
+  misses plainly: a `PreToolUse` hook can't correct the same `Write` call
+  that trips it, only a later one, so a violation buried inside a one-shot
+  report generation structurally can't self-correct within that round.
+
 - **`added:`/`removed:` no longer diff an unbounded edit.** `ask/ask.go`'s
   `diffLines` called `myers.ComputeEdits` on the full `old`/`new` text with
   no size check — found by a fresh research pass asking "does this actually
