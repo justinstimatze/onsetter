@@ -35,8 +35,11 @@ type askSnapshot struct {
 	Evokes    []string `json:"evokes,omitempty"`
 	Revisit   bool     `json:"revisit,omitempty"`
 	Always    bool     `json:"always,omitempty"`
+	Block     bool     `json:"block,omitempty"`
 	Name      string   `json:"name,omitempty"`
 	Cues      []string `json:"cues,omitempty"`
+	FiresOn   []string `json:"fires_on,omitempty"`
+	SilentOn  []string `json:"silent_on,omitempty"`
 	Body      string   `json:"body"`
 }
 
@@ -46,7 +49,8 @@ func snapshot(a *ask.Ask) askSnapshot {
 		When: reStrings(a.When), Added: reStrings(a.Added), Removed: reStrings(a.Removed),
 		Has: reStrings(a.Has), Untouched: a.Untouched, Not: reStrings(a.Not), On: a.On,
 		Requires: a.Requires, Evokes: a.Evokes, Revisit: a.Revisit, Always: a.Always,
-		Name: a.Name, Cues: a.Cues, Body: a.Body,
+		Block: a.Block, Name: a.Name, Cues: a.Cues, FiresOn: a.FiresOn, SilentOn: a.SilentOn,
+		Body: a.Body,
 	}
 }
 
@@ -81,7 +85,8 @@ func (s askSnapshot) restore() (*ask.Ask, error) {
 		Source: s.Source, Line: s.Line, Dir: s.Dir, In: s.In, NotIn: s.NotIn,
 		When: when, Added: added, Removed: removed, Has: has, Untouched: s.Untouched,
 		Not: not, On: s.On, Requires: s.Requires, Evokes: s.Evokes, Revisit: s.Revisit,
-		Always: s.Always, Name: s.Name, Cues: s.Cues, Body: s.Body,
+		Always: s.Always, Block: s.Block, Name: s.Name, Cues: s.Cues,
+		FiresOn: s.FiresOn, SilentOn: s.SilentOn, Body: s.Body,
 	}, nil
 }
 

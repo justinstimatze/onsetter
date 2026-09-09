@@ -283,8 +283,10 @@ order `replay` reports a funnel in:
 | `block` | nothing — denies the write on a matched `added:`/`removed:` firing instead of only informing about it | `false` |
 | `name` | nothing — gives another ask something to cue | none |
 | `cues` | nothing — fires a second, named ask in the same injection | none |
+| `fires-on` | nothing — `lint` asserts the glob's files make this ask fire | none |
+| `silent-on` | nothing — `lint` asserts the glob's files make this ask stay silent | none |
 
-The last five never gate — none of them can turn a pending edit away, and
+The last seven never gate — none of them can turn a pending edit away, and
 none appears in `replay`'s funnel.
 
 `when` and `not` see `content` on a Write and `new_string` on an Edit — the
@@ -500,6 +502,32 @@ in the same turn, not the next one. A firing reached through `cues:` never
 denies, even on a `block: true` target: a cued hit never checks its own
 gate, so it never has anything concrete to point at either.
 
+A gate has two independent ways to be dark: a broken pattern that never
+matches, or a glob narrower than the corpus it's meant to cover. `replay`'s
+rate reads the same either way — low, or zero — and can't tell a clean
+corpus from a dead ask. `fires-on:` and `silent-on:` point at a real file
+whose current content is a known example, and `onsetter lint` checks the
+claim directly instead of leaving it to a rate:
+
+```ask
+in: **/*.go
+when: (?m)^\s*//\s*TODO
+fires-on: fixtures/bad.go
+silent-on: fixtures/good.go
+
+Track this in a ticket instead of a bare TODO comment.
+```
+
+`lint` builds the same on-disk synthetic edit `list` and `replay` already
+construct from each fixture's own content, and asserts `Match` agrees with
+what the header claims — every `fires-on:` file must fire, every
+`silent-on:` file must not. A mismatch is a lint failure naming the exact
+fixture, not a rate to eyeball. Repeat either header for more than one
+fixture; both resolve against the ask's own directory, the same as `in:`.
+`removed:` has no fixture-testable form — a single file's content has no
+diff to remove a line from, so an ask carrying `removed:` is skipped by
+this check with a note, not a false pass or fail.
+
 Most blocks are one header and a paragraph. An ask in `corpus/CLAUDE.md` with
 no `in:` governs everything under `corpus/`, which is the scope its author can
 actually reason about.
@@ -700,7 +728,7 @@ $ onsetter list cmd/onsetter/hook.go
 ```
 
 It also answers the harder question, which is why an ask you just wrote is
-*not* firing. There are sixteen headers, and the one that rejected gets marked
+*not* firing. There are eighteen headers, and the one that rejected gets marked
 — unless a `cues:` from elsewhere reached it anyway, in which case `list`
 says so instead:
 

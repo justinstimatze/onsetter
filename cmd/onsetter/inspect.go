@@ -387,6 +387,7 @@ func cmdLint(args []string) error {
 					r.Where(root))
 				bad++
 			}
+			bad += lintFixtures(r, root)
 		}
 	}
 	for _, p := range ask.ValidateCues(all) {
@@ -431,6 +432,125 @@ func warnBlindToDiff(r *ask.Ask) {
 	fmt.Printf("    ! rate does not measure %s — replay has no old text, so\n",
 		strings.Join(gates, " or "))
 	fmt.Printf("      there is no diff to gate on. Drive `onsetter hook` to check it.\n")
+}
+
+// lintFixtures checks fires-on:/silent-on: against real files on disk,
+// catching the exact failure germline hit twice in one day — a broken
+// anchoring regex and an overly-narrow glob both read as a healthy, quiet
+// ask from the outside, indistinguishable from one with nothing left to
+// catch. Returns how many problems it found.
+func lintFixtures(r *ask.Ask, root string) int {
+	if len(r.FiresOn) == 0 && len(r.SilentOn) == 0 {
+		return 0
+	}
+	// removed: can never pass on a synthetic edit built from one file's
+	// content alone — diffLines(old="", new) has no removed lines to find,
+	// the same gap warnBlindToDiff already names for replay's rate. Unlike
+	// added:, which degrades to "matches anywhere in the file" and is still
+	// a fair question for a fixture written on purpose to contain or omit
+	// something, removed: has no degrade-equivalent: Match requires it to
+	// pass like every other gate on the ask, and it structurally cannot. A
+	// fires-on: assertion would always fail and a silent-on: assertion
+	// would always trivially pass, neither telling the author anything.
+	if len(r.Removed) > 0 {
+		fmt.Fprintf(os.Stderr,
+			"%s: fires-on:/silent-on: not checked — this ask has a removed: gate, and a single file's content has no diff to remove from, so removed: can never pass on a synthetic edit. Drive `onsetter hook` with an old/new pair instead.\n",
+			r.Where(root))
+		return 0
+	}
+
+	bad := 0
+	for _, g := range r.FiresOn {
+		files, err := fixtureFiles(r, g)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: fires-on: %q: %v\n", r.Where(root), g, err)
+			bad++
+			continue
+		}
+		if len(files) == 0 {
+			fmt.Fprintf(os.Stderr, "%s: fires-on: %q matches no file — the example this ask cites does not exist\n", r.Where(root), g)
+			bad++
+			continue
+		}
+		for _, f := range files {
+			ok, err := fires(r, f)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%s: fires-on: %s: %v\n", r.Where(root), shortOne(f), err)
+				bad++
+				continue
+			}
+			if !ok {
+				fmt.Fprintf(os.Stderr, "%s: fires-on: %q — %s does not fire, but is cited as an example that should\n", r.Where(root), g, shortOne(f))
+				bad++
+			}
+		}
+	}
+	for _, g := range r.SilentOn {
+		files, err := fixtureFiles(r, g)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: silent-on: %q: %v\n", r.Where(root), g, err)
+			bad++
+			continue
+		}
+		if len(files) == 0 {
+			fmt.Fprintf(os.Stderr, "%s: silent-on: %q matches no file — the example this ask cites does not exist\n", r.Where(root), g)
+			bad++
+			continue
+		}
+		for _, f := range files {
+			ok, err := fires(r, f)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%s: silent-on: %s: %v\n", r.Where(root), shortOne(f), err)
+				bad++
+				continue
+			}
+			if ok {
+				fmt.Fprintf(os.Stderr, "%s: silent-on: %q — %s fires, but is cited as an example that should stay silent\n", r.Where(root), g, shortOne(f))
+				bad++
+			}
+		}
+	}
+	return bad
+}
+
+// fires reports whether r would fire on path's current on-disk content —
+// the same synthetic-edit shape cmdList and cmdReplay already build, so
+// fires-on:/silent-on:'s check exercises Match exactly the way those two
+// commands already do: the on: mint/edit existence fake, and the on: read
+// content swap.
+func fires(r *ask.Ask, path string) (bool, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	var evokes func(string) bool
+	if len(r.Evokes) > 0 {
+		evokes = embed.BuildPredicate(string(content), interactiveBudget)
+	}
+	e := ask.Edit{Path: path, New: string(content), Disk: string(content), Exists: r.On != ask.ModeMint, Evokes: evokes}
+	if r.On == ask.ModeRead {
+		e.New = ""
+		e.IsRead = true
+	}
+	return r.Match(e).OK, nil
+}
+
+// fixtureFiles resolves a fires-on:/silent-on: glob against the ask's own
+// directory — the same directory in: and untouched: resolve against — to
+// the real files it currently matches on disk, directories excluded.
+func fixtureFiles(r *ask.Ask, glob string) ([]string, error) {
+	matches, err := doublestar.FilepathGlob(filepath.Join(r.Dir, filepath.FromSlash(glob)))
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, m := range matches {
+		if st, err := os.Stat(m); err == nil && !st.IsDir() {
+			out = append(out, m)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // funnel renders where a never-firing ask lost its files, in the order Match

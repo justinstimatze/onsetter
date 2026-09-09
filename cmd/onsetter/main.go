@@ -98,25 +98,28 @@ An ask is a fenced block in any CLAUDE.md:
 
 Headers, one blank line, then the prose. Every header is optional, and they
 apply in this order — which is the order ` + "`replay`" + ` reports a funnel in,
-except the last five: ` + "`revisit`" + `, ` + "`always`" + `, ` + "`block`" + `, ` + "`name`" + ` and ` + "`cues`" + `
-never gate, so none of the five ever appears there.
+except the last seven: ` + "`revisit`" + `, ` + "`always`" + `, ` + "`block`" + `, ` + "`name`" + `,
+` + "`cues`" + `, ` + "`fires-on`" + ` and ` + "`silent-on`" + ` never gate, so none of the seven
+ever appears there.
 
-  requires   a binary resolving on $PATH — a fact about the machine, not the file
-  in         glob, relative to this CLAUDE.md's directory  (default: all below)
-  not-in     glob excluding a path that in would match
-  on         any | mint | edit — mint means the file does not exist yet
-  not        regex against the incoming text; suppresses
-  has        regex against the file as it stands on disk
-  untouched  glob no file written this session may match; suppresses
-  added      regex against the lines this edit introduces
-  removed    regex against the lines this edit deletes
-  when       regex against the incoming text
-  evokes     a fuzzy trigger phrase, not a regex — fires on any one, not all
-  revisit    true — retired; every matched ask always widens now, lint flags it
-  always     true — skips the repeat count on a match, or the once-per-session cap on a reminder
-  block      true — added:/removed: only; denies the write and gives the reason instead of only informing
-  name       a handle another ask's cues: can point at
-  cues       fires a second, named ask in the same injection, gate unchecked
+  requires    a binary resolving on $PATH — a fact about the machine, not the file
+  in          glob, relative to this CLAUDE.md's directory  (default: all below)
+  not-in      glob excluding a path that in would match
+  on          any | mint | edit — mint means the file does not exist yet
+  not         regex against the incoming text; suppresses
+  has         regex against the file as it stands on disk
+  untouched   glob no file written this session may match; suppresses
+  added       regex against the lines this edit introduces
+  removed     regex against the lines this edit deletes
+  when        regex against the incoming text
+  evokes      a fuzzy trigger phrase, not a regex — fires on any one, not all
+  revisit     true — retired; every matched ask always widens now, lint flags it
+  always      true — skips the repeat count on a match, or the once-per-session cap on a reminder
+  block       true — added:/removed: only; denies the write and gives the reason instead of only informing
+  name        a handle another ask's cues: can point at
+  cues        fires a second, named ask in the same injection, gate unchecked
+  fires-on    glob to a file whose content should fire this ask; lint checks it
+  silent-on   glob to a file whose content should not fire this ask; lint checks it
 
 Repeat a regex header for an AND (` + "`not`" + ` is an OR of suppressors, and
 ` + "`evokes`" + ` — not a regex at all — is an OR too); RE2 has no lookahead, so

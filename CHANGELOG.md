@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+- **New `fires-on:`/`silent-on:` headers, germline's own feature request,
+  traced to the root cause their `CHANGELOG.md` names directly: "A gate has
+  two independent ways to be dark. Fixing one leaves the measurement looking
+  identical."** `onsetter replay`'s rate reads the same — low, or zero —
+  whether a corpus is genuinely clean or a gate is dead: germline hit this
+  twice in one day, once from a broken anchoring regex (`when: ^TODO`
+  anchors to the start of the whole file without `(?m)`, never a line three
+  deep) and once from a glob narrower than the corpus it meant to cover.
+  Both headers point at a real file whose current content is a known
+  example; `onsetter lint` builds the same on-disk synthetic edit `list` and
+  `replay` already construct and asserts `Match` agrees — every `fires-on:`
+  file must fire, every `silent-on:` file must not, a mismatch is a lint
+  failure naming the exact fixture rather than a rate to eyeball. Neither
+  header gates Match, so neither is part of `ID()` — the same reasoning that
+  already excludes `name:`. `removed:` has no fixture-testable form: a
+  single file's on-disk content has no diff to remove a line from, so an ask
+  carrying `removed:` is skipped by the check with a note printed, never a
+  silent false pass or fail. Eighteenth header, same four-place checklist as
+  `block:`.
+
+  **Found and fixed a real regression while building this**, not a new-code
+  bug: `internal/discover/cache.go`'s on-disk shard cache (`askSnapshot`)
+  never gained `Block`, `FiresOn`, or `SilentOn` fields when `block:` shipped
+  — every other field round-trips through a cache hit, those three silently
+  reset to their zero value. `onsetter lint` walks every source file through
+  `discover.ParseSource` twice in a row (once from `discover.Sources` probing
+  for asks, once from its own loop), so the second call was always a cache
+  hit serving a snapshot missing the new fields — the first real test written
+  against `fires-on:` failed with `FiresOn` silently empty, traced to this,
+  not a parser bug. The same gap meant a `block: true` ask could silently
+  stop denying anything the moment its parse got cache-restored — the
+  persistent `onsetter serve` process, `internal/discover.Warm`'s own
+  fallback path on a memory-miss. `TestCacheRoundTripsAllHeaderKinds` now
+  asserts `Block`, `FiresOn`, and `SilentOn` explicitly, so a future header
+  added to `Ask` without a matching `askSnapshot` field fails a test instead
+  of failing silently on a warm cache.
+
 - **New `block: true` header, closing the gap `CUSTOM_EVAL.md` and
   `IDEAS.md` named directly: a `PreToolUse` hook can't correct the same
   `Write` or `Edit` call that trips it, only a later one, because the model

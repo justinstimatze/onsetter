@@ -57,31 +57,33 @@ there means `~/.claude/projects/**/memory/feedback_*.md`; without the fix,
 memory file.
 
 
-## The sixteen headers
+## The eighteen headers
 
 Listed in the order `Match` applies them, which is the order `onsetter replay`
-reports a funnel in — except the last five. `revisit`, `always`, `block`,
-`name` and `cues` are never a reason a pending edit gets turned away; none of
-the five appears in that funnel at all.
+reports a funnel in — except the last seven. `revisit`, `always`, `block`,
+`name`, `cues`, `fires-on` and `silent-on` are never a reason a pending edit
+gets turned away; none of the seven appears in that funnel at all.
 
-| Header      | Matches                                   | Repeat means |
-|-------------|-------------------------------------------|--------------|
-| `requires`  | a binary resolving on `$PATH`             | AND          |
-| `in`        | the path, as a glob                       | last wins    |
-| `not-in`    | the path, as a glob — excludes            | OR           |
-| `on`        | one of: any, mint, edit                   | last wins    |
-| `not`       | the incoming text — suppresses            | OR           |
-| `has`       | the file as it stands on disk             | AND          |
-| `untouched` | paths written this session — suppresses   | AND          |
-| `added`     | the lines this edit introduces            | AND          |
-| `removed`   | the lines this edit deletes               | AND          |
-| `when`      | the incoming text                         | AND          |
-| `evokes`    | the incoming text, fuzzily — not a regex  | OR           |
-| `revisit`   | nothing — widens the session key instead  | last wins    |
-| `always`    | nothing — skips the session key entirely  | last wins    |
-| `block`     | nothing — denies the write instead of only informing about it | last wins |
-| `name`      | nothing — gives another ask something to cue | last wins |
-| `cues`      | nothing — fires a second ask by name      | cue each     |
+| Header       | Matches                                   | Repeat means |
+|--------------|--------------------------------------------|--------------|
+| `requires`   | a binary resolving on `$PATH`             | AND          |
+| `in`         | the path, as a glob                       | last wins    |
+| `not-in`     | the path, as a glob — excludes            | OR           |
+| `on`         | one of: any, mint, edit                   | last wins    |
+| `not`        | the incoming text — suppresses            | OR           |
+| `has`        | the file as it stands on disk             | AND          |
+| `untouched`  | paths written this session — suppresses   | AND          |
+| `added`      | the lines this edit introduces            | AND          |
+| `removed`    | the lines this edit deletes               | AND          |
+| `when`       | the incoming text                         | AND          |
+| `evokes`     | the incoming text, fuzzily — not a regex  | OR           |
+| `revisit`    | nothing — widens the session key instead  | last wins    |
+| `always`     | nothing — skips the session key entirely  | last wins    |
+| `block`      | nothing — denies the write instead of only informing about it | last wins |
+| `name`       | nothing — gives another ask something to cue | last wins |
+| `cues`       | nothing — fires a second ask by name      | cue each     |
+| `fires-on`   | nothing — `lint` asserts the glob's files fire | AND     |
+| `silent-on`  | nothing — `lint` asserts the glob's files stay silent | AND |
 
 Globs are [doublestar](https://github.com/bmatcuk/doublestar) and resolve
 against the directory of the `CLAUDE.md` the ask lives in — never the repo root
@@ -462,6 +464,46 @@ The idiom for prose that should only ever fire by being cued, never on its
 own: `not-in: **`. `in:` defaults to matching everything, and a `not-in:
 **` unconditionally excludes every path, so the ask can never pass its own
 gate — only a `cues:` from elsewhere can ever reach it.
+
+### `fires-on:` and `silent-on:` — prove a gate isn't dark
+
+```
+fires-on: fixtures/bad_error.go
+silent-on: fixtures/good_error.go
+```
+
+A gate has two independent ways to be dark: a broken pattern that never
+matches anything, and a glob narrow enough that nothing ever reaches the
+pattern to try. `onsetter replay`'s rate reads the same — low, or zero —
+either way, and a low rate from a clean corpus is indistinguishable from a
+low rate from a dead ask. `fires-on:` and `silent-on:` close that gap by
+pointing at a real file whose current content is a known example, and
+`onsetter lint` checks the claim: every `fires-on:` glob's matches must make
+`Match` return true, every `silent-on:` glob's matches must make it return
+false. A mismatch is a lint failure, not a rate to eyeball — `this ask
+cannot fire on its own stated example` is a different, sharper claim than
+`this ask's rate looks low`.
+
+Repeat either header for more than one fixture; each glob is checked
+independently, and every file it matches has to agree. Globs resolve
+against the ask's own directory, the same as `in:` and `untouched:` — a
+fixture doesn't have to live in the same file `in:` reaches, only under the
+same `CLAUDE.md`'s directory.
+
+Built from the same synthetic edit `onsetter list` and `onsetter replay`
+already construct from a file's on-disk content — no new fixture format,
+no new mechanism to keep in sync with `Match`. That reuse carries the same
+blind spot `replay`'s own warning names: a synthetic edit has no old text,
+so `removed:` can never pass on one — not degrade, *never*, since there is
+no diff to find a removed line in. An ask with a `removed:` header is
+skipped by this check entirely, with a note printed instead of a false
+result either direction; check a `removed:` gate by driving `onsetter hook`
+with a real old/new pair. `added:` has no such gap — it degrades to
+"matches anywhere in the file," which is exactly the question a
+deliberately-written fixture is answering.
+
+Not a gate — Match never reads either header, and `onsetter replay` never
+reports a rate for them.
 
 ## Choosing a gate
 

@@ -45,8 +45,11 @@ func TestCacheRoundTripsAllHeaderKinds(t *testing.T) {
 		Requires:  []string{"git"},
 		Evokes:    []string{"committing without asking first"},
 		Always:    true,
+		Block:     true,
 		Name:      "root-target",
 		Cues:      []string{"check-token-scope"},
+		FiresOn:   []string{"fixtures/bad.go"},
+		SilentOn:  []string{"fixtures/good.go"},
 		Body:      "Ask body.",
 	}
 
@@ -66,10 +69,11 @@ func TestCacheRoundTripsAllHeaderKinds(t *testing.T) {
 	}
 	if !equalStrings(r.NotIn, a.NotIn) || !equalStrings(r.Untouched, a.Untouched) ||
 		!equalStrings(r.Requires, a.Requires) || !equalStrings(r.Evokes, a.Evokes) ||
-		!equalStrings(r.Cues, a.Cues) {
+		!equalStrings(r.Cues, a.Cues) || !equalStrings(r.FiresOn, a.FiresOn) ||
+		!equalStrings(r.SilentOn, a.SilentOn) {
 		t.Errorf("plain string-slice headers did not round-trip: %+v", r)
 	}
-	if r.On != a.On || r.Always != a.Always || r.Name != a.Name || r.Body != a.Body {
+	if r.On != a.On || r.Always != a.Always || r.Block != a.Block || r.Name != a.Name || r.Body != a.Body {
 		t.Errorf("scalar headers did not round-trip: %+v", r)
 	}
 	if len(r.When) != 1 || !r.When[0].MatchString("has a TODO here") {

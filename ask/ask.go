@@ -79,6 +79,8 @@ type Ask struct {
 	Block     bool     // added:/removed: only — deny the edit instead of only informing about it
 	Name      string   // stable handle other asks can cue by; not part of ID()
 	Cues      []string // names of other asks to fire alongside this one
+	FiresOn   []string // globs; onsetter lint asserts a match fires — not part of ID()
+	SilentOn  []string // globs; onsetter lint asserts a match does not fire — not part of ID()
 	Body      string
 }
 
@@ -133,6 +135,13 @@ type Edit struct {
 // Block is included the same way Always is: it changes what response a
 // matched ask produces, and an author flipping it on mid-session should not
 // have to wait for a fresh session id before the new behavior takes effect.
+//
+// FiresOn and SilentOn are left out, for the same reason Name is: neither
+// one is read by Match, dispatch, or anything a live session does — only
+// onsetter lint, checking the ask against its own cited fixtures. Editing a
+// fixture list changes what lint asserts about an ask, not the question the
+// ask itself is asking, so it shouldn't re-arm every already-answered
+// session instance any more than fixing a name: collision should.
 func (r *Ask) ID() string {
 	h := sha256.New()
 	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%t\x00%t",
@@ -190,15 +199,18 @@ func Skill() string { return skill }
 // them. One list, so the parse error, the reference in `onsetter headers` and
 // the funnel in `onsetter replay` cannot disagree about what exists.
 //
-// `revisit`, `always`, `block`, `name` and `cues` are last and out of step
-// with that ordering on purpose: Match never looks at any of the five.
-// `revisit`, `always` and `block` are metadata the hook dispatcher reads
-// afterward — the first two to decide what (if anything) the session key for
-// a firing includes, `block` to decide whether a matched firing also denies
-// the edit. `name` is only ever read by another ask's `cues:`, and `cues:`
-// itself is walked by Cascade, not by Match — none of the five is a gate a
-// pending edit can pass or fail on its own.
-var Headers = []string{"requires", "in", "not-in", "on", "not", "has", "untouched", "added", "removed", "when", "evokes", "revisit", "always", "block", "name", "cues"}
+// `revisit`, `always`, `block`, `name`, `cues`, `fires-on` and `silent-on`
+// are last and out of step with that ordering on purpose: Match never looks
+// at any of the seven. `revisit`, `always` and `block` are metadata the
+// hook dispatcher reads afterward — the first two to decide what (if
+// anything) the session key for a firing includes, `block` to decide
+// whether a matched firing also denies the edit. `name` is only ever read
+// by another ask's `cues:`, and `cues:` itself is walked by Cascade, not by
+// Match. `fires-on` and `silent-on` are read only by `onsetter lint`, which
+// builds a synthetic edit from the file each one names and checks that
+// Match's own verdict on it matches what the header claims — none of the
+// seven is a gate a pending edit can pass or fail on its own.
+var Headers = []string{"requires", "in", "not-in", "on", "not", "has", "untouched", "added", "removed", "when", "evokes", "revisit", "always", "block", "name", "cues", "fires-on", "silent-on"}
 
 // Result is the outcome of matching one ask against one edit. When it fired,
 // Matched is the text the content gate hit, so the injection can quote it
@@ -790,6 +802,10 @@ func parseBlock(lines []string, source, dir string, start int) (*Ask, error) {
 			r.Name = v
 		case "cues":
 			r.Cues = append(r.Cues, v) // repeated cues: cues every one, not an AND/OR — it isn't a gate
+		case "fires-on":
+			r.FiresOn = append(r.FiresOn, strings.TrimPrefix(filepath.ToSlash(v), "./"))
+		case "silent-on":
+			r.SilentOn = append(r.SilentOn, strings.TrimPrefix(filepath.ToSlash(v), "./"))
 		default:
 			return nil, fmt.Errorf("unknown header %q (want %s)%s", k, strings.Join(Headers, ", "), hint)
 		}

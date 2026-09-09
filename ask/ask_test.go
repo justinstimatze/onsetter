@@ -2,6 +2,7 @@ package ask
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -849,6 +850,44 @@ func TestIDChangesWithBlock(t *testing.T) {
 	b := parseOne(t, "```ask\nadded: TODO\nblock: true\n\nAsk.\n```\n")
 	if a.ID() == b.ID() {
 		t.Error("adding block: true did not change the ask's ID")
+	}
+}
+
+func TestFiresOnAndSilentOnParseAsRepeatableGlobs(t *testing.T) {
+	r := parseOne(t, "```ask\nwhen: TODO\nfires-on: fixtures/bad.go\nfires-on: fixtures/also_bad.go\nsilent-on: fixtures/good.go\n\nAsk.\n```\n")
+	if want := []string{"fixtures/bad.go", "fixtures/also_bad.go"}; !slices.Equal(r.FiresOn, want) {
+		t.Errorf("FiresOn = %v, want %v", r.FiresOn, want)
+	}
+	if want := []string{"fixtures/good.go"}; !slices.Equal(r.SilentOn, want) {
+		t.Errorf("SilentOn = %v, want %v", r.SilentOn, want)
+	}
+	plain := parseOne(t, "```ask\nwhen: TODO\n\nAsk.\n```\n")
+	if len(plain.FiresOn) != 0 || len(plain.SilentOn) != 0 {
+		t.Error("an ask with no fires-on:/silent-on: header should default to empty")
+	}
+}
+
+// fires-on:/silent-on: are read only by onsetter lint, never by Match —
+// same reasoning as always:/block:'s own test.
+func TestFiresOnAndSilentOnNeverAffectMatch(t *testing.T) {
+	e := Edit{New: "TODO: fix this"}
+	plain := parseOne(t, "```ask\nwhen: TODO\n\nAsk.\n```\n")
+	fixtured := parseOne(t, "```ask\nwhen: TODO\nfires-on: a.go\nsilent-on: b.go\n\nAsk.\n```\n")
+	pm, pok := match(plain, e)
+	fm, fok := match(fixtured, e)
+	if pok != fok || pm != fm {
+		t.Errorf("fires-on:/silent-on: changed Match's outcome: (%q, %v) vs (%q, %v)", pm, pok, fm, fok)
+	}
+}
+
+// Unlike always: and block:, fires-on:/silent-on: don't change identity —
+// they're lint's own fixture list, not part of the question the ask asks,
+// the same reasoning that leaves name: out of ID().
+func TestIDIgnoresFiresOnAndSilentOn(t *testing.T) {
+	a := parseOne(t, "```ask\nwhen: TODO\n\nAsk.\n```\n")
+	b := parseOne(t, "```ask\nwhen: TODO\nfires-on: a.go\nsilent-on: b.go\n\nAsk.\n```\n")
+	if a.ID() != b.ID() {
+		t.Error("adding fires-on:/silent-on: changed the ask's ID, want it unchanged")
 	}
 }
 

@@ -1,6 +1,6 @@
 ---
 name: onsetter
-description: How to write, measure and wire an onsetter ask — prose in a fenced ask block inside an ordinary CLAUDE.md, injected in front of the Write or Edit that trips its gate. Read this before adding or changing an ask block, before picking a header (requires, in, not-in, on, not, has, untouched, added, removed, when, evokes, revisit, always, block, name, cues), and whenever a CLAUDE.md in the tree already contains ask fences. Covers where the block goes, the replay-before-wiring rule, why a wide gate now costs more than it used to, what replay cannot measure, how one ask can cue another by name, and when block: true is warranted over an advisory firing.
+description: How to write, measure and wire an onsetter ask — prose in a fenced ask block inside an ordinary CLAUDE.md, injected in front of the Write or Edit that trips its gate. Read this before adding or changing an ask block, before picking a header (requires, in, not-in, on, not, has, untouched, added, removed, when, evokes, revisit, always, block, name, cues, fires-on, silent-on), and whenever a CLAUDE.md in the tree already contains ask fences. Covers where the block goes, the replay-before-wiring rule, why a wide gate now costs more than it used to, what replay cannot measure, how one ask can cue another by name, when block: true is warranted over an advisory firing, and how fires-on:/silent-on: prove a gate isn't dark.
 ---
 
 # Writing an onsetter ask
