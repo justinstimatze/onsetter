@@ -782,9 +782,18 @@ investigation.
 **Gate on path and content, not path alone.** `lint` rejects an ask with no
 content gate, no `in:` narrowing, and no mode — that is a banner.
 
-**No cache.** Parsing a handful of `CLAUDE.md` files is well under a
-millisecond; process spawn dominates. A cache would be a second source of truth
-for no measurable gain.
+**Caches only where a cache pays off.** The plugin path runs `onsetter serve`
+as a persistent process (see **Install**), and `internal/discover.Warm`'s
+in-memory layer over it is a real, measured win there: ~0.6-0.9ms per call
+over one warm connection versus ~15-17ms spawning fresh each time
+(`CHANGELOG.md` has the real `go test -bench` numbers). The manual,
+one-process-per-call install has none of that: an on-disk cache was built and
+benchmarked for it first, and came out roughly even with a cold parse — a hit
+still recompiles every regex from its stored source string, and process
+spawn dominates either way, cache hit or not. That disk cache still exists,
+as `Warm`'s own fallback layer and what every one-shot CLI subcommand
+(`status`, `lint`, `replay`, ...) still benefits from on a warm machine, but
+it was never the fix for the manual path's own process-spawn floor.
 
 ## What it is bad at
 
