@@ -87,7 +87,10 @@ everything else, and it gets followed a bit better than half the time — 55.0%,
 across six models, when the rules are sitting right there in the context window
 ([Zhou et al. 2026](https://arxiv.org/abs/2606.13174); the full table is under
 [prior art](#prior-art)). The convention was never wrong. Rereading it just
-never happens, because nothing makes it happen at the moment it applies.
+never happens, because nothing makes it happen at the moment it applies. A
+head-to-head test against that same always-in-context baseline puts
+onsetter at 97.2% versus 76.4% — paired, significance-tested, real numbers
+under [Prior art](#prior-art).
 
 ## Install
 
@@ -923,9 +926,21 @@ here is narrower: fire rates, and blocks that agreed with the shell scripts
 they replaced. [`EVAL.md`](EVAL.md) documents a direct attempt to close that
 gap against TRACE's own evaluation harness, and the mismatch it surfaced
 instead. [`CUSTOM_EVAL.md`](CUSTOM_EVAL.md) is the follow-up that fixed the
-instrument and ran the comparison for real: same rule content delivered at
-the tool call versus always in context, on 36 purpose-built scenarios —
-onsetter's own channel wins, p ≈ 0.0007.
+instrument and ran the comparison for real, on 36 purpose-built scenarios
+where every round carries a check onsetter can actually address. 72
+held-out paired rounds test whether a rule survives, not just the first
+correction:
+
+| condition | held-out compliance |
+|---|---|
+| no memory of the rule at all | 0/72 (0%) |
+| the same rule content, always in context | 55/72 (76.4%) |
+| **onsetter — delivered at the tool call** | **70/72 (97.2%)** |
+
+Paired by scenario and round, not compared as totals: onsetter against
+always-in-context — the actual novel comparison, the one nothing had run
+before this — has 19 discordant pairs, 17 favoring onsetter, sign test
+p ≈ 0.00073.
 
 What onsetter adds beyond either is that the ask and the content it governs
 live in the same directory, so the ask moves when the content does.
