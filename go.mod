@@ -6,7 +6,7 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/hexops/gotextdiff v1.0.3
 	github.com/mark3labs/mcp-go v1.0.0
-	golang.org/x/sys v0.47.0
+	golang.org/x/sys v0.48.0
 	mvdan.cc/sh/v3 v3.14.1
 )
 
