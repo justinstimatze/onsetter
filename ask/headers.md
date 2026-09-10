@@ -402,6 +402,10 @@ advisory, never blocking, on purpose (see the README's own **Design**
 section). `block:` is opt-in, per ask, and scoped to the one case where
 onsetter already has the offending text in hand — reach for it only when a
 reminder arriving one call too late has demonstrably cost something.
+`CUSTOM_EVAL.md`'s two real misses are that case: a `Write` that embeds a
+violation in the same call that creates the file, where an advisory hook has
+no later call in the round to land a correction on — see its "Two real
+misses" section, and `evals/block-denies-write-embed/` for the reproduction.
 
 ### `name:` — a handle other asks can cue
 

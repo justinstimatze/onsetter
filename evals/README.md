@@ -65,6 +65,13 @@ against onsetter's own CLI:
 - The same drive fires the `block: true`/`added:` ask on an `Edit` adding
   `DEBUG = True`, producing `permissionDecision: "deny"` and the ask's own
   prose as `permissionDecisionReason`.
+- The identical ask also denies a `Write` that creates a brand-new file
+  whose content embeds `DEBUG = True` directly — same `permissionDecision:
+  "deny"`, no source change needed, since a `Write` has no old text and
+  its whole content counts as "added." This is the shape `CUSTOM_EVAL.md`'s
+  two real misses hit: a violation born and buried in the same call that
+  creates the file, with no earlier tool call for an advisory-only hook to
+  land a correction on.
 - The `evokes:` ask fires on a bare, heading-free paraphrase sentence with
   **zero shared keywords** with the trigger phrase, after `onsetter warm`.
   Real measured scores via `onsetter calib` on a 5-positive/3-negative
@@ -92,7 +99,7 @@ and, for a `block: true` match:
 
 ## Layout
 
-Five cases, each exercising one thing the plugin wiring is supposed to do:
+Six cases, each exercising one thing the plugin wiring is supposed to do:
 
 - `fires-on-matching-write/` — a `when:`-gated ask fires on the matching edit.
 - `silent-on-unrelated-write/` — the same ask stays dark on an unrelated one.
@@ -100,6 +107,10 @@ Five cases, each exercising one thing the plugin wiring is supposed to do:
   no keywords with the trigger phrase.
 - `block-forces-retry/` — a `block: true` ask denies the first attempt and
   the model retries with a corrected edit.
+- `block-denies-write-embed/` — the same `block: true` ask denies a `Write`
+  that creates a brand-new file with the violation embedded in that same
+  call, not just an `Edit` to an existing one — the shape `CUSTOM_EVAL.md`'s
+  two real misses hit.
 - `sustained-session-stays-fast/` — many sequential edits in one session all
   land; the actual latency comparison against the persistent-server
   benchmark in `CHANGELOG.md` has to be read from the run's own `--json`

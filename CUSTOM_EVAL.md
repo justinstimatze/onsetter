@@ -139,6 +139,23 @@ reach. This is a real, honest limit on onsetter's own hypothesis, not
 softened: an advisory hook fired at the tool call still can't out-run a
 one-shot generation that buries the violation inside itself.
 
+**Update, 2026-09-10: this gap has a fix, mechanically confirmed, not yet
+re-measured.** `block: true` (`ask/ask.go`, commit `0e427f2`) shipped six
+hours after this eval's own commit, built for exactly this shape — an
+opt-in deny on an `added:`/`removed:` match, closing the one-call-too-late
+window described above. Confirmed directly, at zero API cost: driving
+`onsetter hook` with a `Write` `PreToolUse` payload that creates a
+brand-new file whose content embeds `DEBUG = True` in the same call,
+against the real shared eval fixture's `added: DEBUG\s*=\s*True` /
+`block: true` ask, returns `permissionDecision: "deny"` — the exact
+failure shape both P4 misses above hit, blocked. What's still open: the
+`trace_exp` harness that produced the 97.2% number has not been re-run
+with `block: true` wired onto the P4 ask, so there is no re-measured
+score backing a claim of 100% — only a mechanical proof that the gate
+denies the shape that caused both losses. See
+`evals/block-denies-write-embed/` for the local, free reproduction of
+this exact check.
+
 ## What this deliberately does not cover
 
 Reuses TRACE's own P1–P5 taxonomy rather than exercising onsetter's

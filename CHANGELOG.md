@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.10.3 — 2026-09-10
+
+- **Closed the paper trail on `CUSTOM_EVAL.md`'s two real misses.**
+  `block: true` (shipped in `v0.10.0`, commit `0e427f2`) targets exactly
+  the failure shape both misses hit — a violation embedded in the same
+  `Write` call that creates the file, with no later tool call for an
+  advisory-only hook to land a correction on — but the eval write-up
+  still described the gap as unaddressed. Confirmed directly, at zero API
+  cost: driving `onsetter hook` with a `Write` payload that creates a
+  brand-new file embedding `DEBUG = True`, against the shared eval
+  fixture's `added:`/`block: true` ask, returns `permissionDecision:
+  "deny"`. `CUSTOM_EVAL.md` now records this; a new local eval case,
+  `evals/block-denies-write-embed/`, reproduces it alongside the existing
+  `Edit`-only `block-forces-retry/` case; `ask/headers.md`'s `block:`
+  section now cites the misses as the concrete case that motivated it.
+  The external `trace_exp` harness itself has not been re-run with
+  `block: true` wired onto the P4 ask, so this is a mechanical proof the
+  gate closes the gap, not a re-measured score.
+
 ## v0.10.2 — 2026-09-09
 
 - **Two real bugs left the plugin non-functional for every install since
@@ -36,6 +55,23 @@
   investigation. Confirmed the plugin genuinely connects
   (`plugin:onsetter:onsetter` — connected, 1 tool) only by checking `/mcp`
   from a different directory.
+
+  **Update, 2026-09-10: the same root cause now surfaces louder.** What
+  used to read as silent masking now shows a `PreToolUse:Bash hook error:
+  MCP server 'plugin:onsetter:onsetter' not connected` banner on every
+  Bash/Write/Edit/Read call inside this checkout — Claude Code's own
+  reporting got more visible, not the underlying mechanism. Confirmed
+  directly: the project-scoped failure and the plugin-scoped connection
+  are both unchanged, `dispatch()` behaves identically through either the
+  CLI (`onsetter hook`) or the MCP `hook` tool, and the hook still fails
+  open. Considered and rejected dropping the MCP server for a
+  `command`-type hook to eliminate the name collision entirely — MCP
+  exists for a real, measured ~20x per-call win over a fresh process spawn
+  (~0.6-0.9ms vs. ~15-17ms, `go test -bench` against a 150-ask fixture —
+  see the entry below introducing `onsetter serve`), and dropping it would
+  trade that win, for every user of the plugin, to quiet a banner that
+  only appears in this repo's own dev loop. Left as-is: cosmetic, not
+  worth the regression.
 
 ## v0.10.1 — 2026-09-09
 
