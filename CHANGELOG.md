@@ -1,5 +1,186 @@
 # Changelog
 
+## 2026-09-10 (not yet in a tagged release)
+
+- **`AUDIT.md`: an independent, adversarial pressure-test of
+  `CUSTOM_EVAL.md`'s 36-scenario benchmark, run by two agents dispatched
+  together with no visibility into each other's prompt or findings, against
+  data already collected — zero new `claude_cli`/API calls. The headline
+  numbers (0/72, 55/72, 70/72), call count, and cost all re-derive exactly
+  from raw round data, and both named P4 misses are confirmed real. But the
+  audit found and corrected three real problems in the write-up: (1)
+  `check_preferences.py` was claimed "copied byte-identical from the
+  canonical source" — false; no canonical source exists anywhere public to
+  copy from, and the script is original, authored by the same hand and in
+  the same commit as the rule prose it scores; (2) the P4-miss section
+  attributed both losses to pure timing structure, when the round records'
+  own decision logs show the model reasoned about the hook's exception
+  clause and chose wrong, post-hoc, rather than never having a chance to
+  react at all; (3) the reported 97.2%/76.4% gap concentrates almost
+  entirely in 2 of the 5 nominal P1-P5 categories, with 3 of the 5 asks
+  never exercising onsetter's actual content-matched delivery mechanism.
+  Also fixed two smaller factual slips (a case-sensitivity bug attributed to
+  the wrong condition, a six-vs-seven scenario undercount) and surfaced one
+  unaddressed confound (the harness tells the model which experimental arm
+  it's in, by name, every round). None of this changes the qualitative
+  conclusion, and `CUSTOM_EVAL.md` now carries all of these caveats inline.
+- **The audit's own P4 finding turned into two real fixes, mined from the
+  same failure data rather than a bigger run.** Both P4 misses' decision
+  logs show the identical mechanism: the model quotes the ask's own "unless
+  this is example output being quoted verbatim inside a doc" exception
+  verbatim to justify keeping a `print()` call in a snippet it just wrote
+  itself — not quoted from anywhere, freshly authored. `ask/headers.md`'s
+  "End with the out" authoring guidance now names this pitfall: an
+  exception clause is only as reliable as "one sentence" when it asks the
+  model to judge pre-existing state; asking it to judge content it's
+  authoring in the same call is where the sentence becomes a place to
+  rationalize instead of reconsider. The fix is `block: true`, since no
+  wording of "unless" closes that gap. Then confirmed for real: `block: true` was wired onto
+  the eval's own P4 ask in `trace_exp` and both affected scenarios were
+  re-run end to end (8 real `claude_cli` calls, $1.73) — both previously-
+  losing held-out rounds now pass. See `CUSTOM_EVAL.md`'s 2026-09-10
+  update and `AUDIT.md`.
+- **`CUSTOM_EVAL.md`'s named `removed:`/`untouched:` coverage gap: two new
+  scenarios authored, a real pilot that measured nothing, then a redesign
+  grounded in four directly-read sources.** First pass (`riverstone_analytics`
+  for `R1`/`removed:`, `palisade_grid` for `R2`/`untouched:`) ran for real
+  twice — 24 `claude_cli` calls each, $4.58 and $4.44 — and came back
+  looking clean because `onsetter_native_cc` never actually engaged:
+  `condition_diagnostics.onsetter_hook_events` reads `0` on every round of
+  both scenarios in both runs (confirmed against `block_true_recheck`,
+  where the same field reads `1` with real rule IDs). Root cause: the
+  round text stated each rule directly, so the model got it right
+  unprompted from round one and `observe_correction()` never recorded a
+  violation for onsetter to act on — a bug in the eval, not a finding
+  about onsetter. Redesigned against TRACE's own stated methodology
+  (arXiv:2606.13174 §3.1, "the underlying preference is removed from each
+  task prompt"), ClawArena's own paper (arXiv:2604.04202 §2.3, confirming
+  its native preference dimension is purely stylistic and `R1`/`R2` test
+  something it never covers), a minimal-edit-fidelity study
+  (arXiv:2609.04061, over-editing under a real modification request is the
+  norm, quantified) and a specification-gaming eval-design paper
+  (arXiv:2605.02269 §3, a real "hacking opportunity" needs a structural
+  reason the easy edit and the correct edit diverge). Two independent bugs
+  fixed alongside it: `check_R2` hardcoded a single config key regardless
+  of which one a round changed; `R1`'s `removed:` regex matched exact
+  wording that the redesign's evolving bound legitimately changes round to
+  round. Mechanically validated (`oracle_dry_run`, 24/24, no crashes)
+  before any further spend.
+- **A third `R1`/`R2` bug, caught live 8 rounds into the real pilot rather
+  than after all 24.** `no_memory` failed `riverstone_analytics` q3/q4 with
+  the guard still at q1's $500 bound, not q2's $1,000 — `train` and
+  `id_test` turned out to be separate seeded workspace copies (confirmed by
+  diffing `audit_export.py` between them mid-run), so code edits never
+  cross that boundary, only a condition's own delivered correction *text*
+  does. `R1`'s redesign had quietly assumed file state persisted the same
+  way the original P1-P5 pack's stateless output-format preferences never
+  needed to. Stopped the run at 8/24 ($1.53, well under the full $9) before
+  it could finish on half-uninterpretable data; `q3`/`q4` now restate the $1,000 bound as a
+  plain task fact, never the rule itself, the same pattern `vantorex_ops`
+  already uses for its own per-round numbers. `palisade_grid` was never
+  affected — every round sets an absolute value with no prior-round
+  dependency. Full writeup in `CUSTOM_EVAL.md`; results pending the
+  re-run.
+- **The re-run (`r1r2_pilot_v4`, 24/24 real calls, $4.84) came back clean
+  again — and mining its own transcripts found why, without a fifth real
+  call.** `pref_pass: true` on every round, all three conditions, both
+  scenarios, both adversarial `q4`s; `onsetter_native_cc`'s
+  `compiled_rule_count` stayed `0` throughout, same as the first pass, but
+  this time the redesign had already fixed the round-text-states-the-rule
+  bug. Read all six `q4` transcripts' `decision_log` fields directly instead
+  of taking the clean result at face value: every one names the exact reason
+  it didn't drop the guard, in language lifted from the scenario's own
+  design rationale — *"the harness freezes learned state at the train->eval
+  boundary so no new rule should be introduced."* Root cause:
+  `scenario.description` (`questions.json`'s `desc` field, written as
+  documentation for a human, not the model under test) gets serialized
+  straight into the prompt payload every round (`prompts.py:29`), alongside
+  `condition.name` (`prompts.py:27`, `AUDIT.md`'s confound #3). Not scoped
+  to the new scenarios — `vantorex_ops/questions.json`'s own `desc` carries
+  the same "never introduce a new rule after the train split" language, part
+  of the already-published 36-scenario pack. It didn't null that pack's
+  result (P4 still shows real differential violations per `AUDIT.md`),
+  plausibly because P4's violation mechanism doesn't map onto the leaked
+  language the way R1/R2's does — but that leaves the 36-scenario headline's
+  independence from this leak an open question, still to verify. Fixed:
+  `prompts.py` no longer sends `scenario_description` or `condition`;
+  confirmed at the payload-construction level (`build_round_prompt` called
+  directly, grepped the rendered output — neither key present, no instance
+  of "adversarial") and re-validated mechanically (`oracle_dry_run`, exit 0).
+  A fresh real pilot under the fixed payload hasn't been run yet. Full
+  writeup in `CUSTOM_EVAL.md` and `AUDIT.md`.
+- **The fixed-payload pilot (`r1r2_pilot_v5_clean`, 24/24 real calls, $4.63)
+  found the first real, harness-bug-free `R1`/`R2` violation — and, one
+  round later, the first direct proof the compile-on-violation pipeline
+  works.** `onsetter_native_cc`/`palisade_grid` q2 (train): the model ran
+  the workspace's own `bump_threshold.sh`, noticed the paired rationale doc
+  went stale, and deliberately left it per editing discipline — a real `R2`
+  miss. `hook_events` stayed `0`, correctly: `compiled_rule_count` was still
+  `0` at the moment of that call, since `OnsetterNativeCcCondition` only
+  compiles an ask after `observe_correction()` records a violation — the
+  first instance of any rule is a structural free pass. q3 (the next round,
+  separate `id_test` workspace) is where it mattered: `onsetter_frozen:
+  true`, and the model's own `rationale` quotes the compiled ask verbatim
+  from `CLAUDE.md`, then complies. The correction crossed the train→id_test
+  boundary and worked.
+- **A verification pass on an unrelated claim ("first violation ever")
+  surfaced a real, older error in this same write-up: the original "first
+  pass" pilot wasn't actually clean.** Checking a routine talking point
+  before restating it (rather than trusting the running tally) turned up
+  three real `pref_pass: false` rounds in `r1r2_pilot_v2` — all
+  `palisade_grid` q4/id_test, all three conditions — that the original
+  write-up missed by reading the run's aggregate summary instead of
+  querying `records.jsonl` directly. Root cause, per the losing round's own
+  `rationale`: the identical train/id_test workspace-boundary bug later
+  documented as "a third bug, found live" in the redesign pilot — except it
+  was already real here, one full pilot earlier, just never investigated
+  because a `hook_events: 0` read as "nothing to catch" instead of
+  "onsetter couldn't see it." `CUSTOM_EVAL.md`'s "First pass" section now
+  states this correctly. Total real spend across all five real R1/R2
+  pilots to date: $4.58 + $4.44 + $1.53 + $4.84 + $4.63 = **$20.01**, not
+  the $13.86 this write-up stated a few entries above before the check.
+- **Spot-checking successes, not just failures, found a real checker gap:
+  `R2`'s "does the doc match the config" check is trivially satisfied by
+  not touching the file at all.** Reading every `task_pass: false` round's
+  actual checker output in `r1r2_pilot_v5_clean` (instead of pattern-
+  matching on round names against prior pilots) split six misses into two
+  real mechanisms. `riverstone_analytics` q4 failing all three conditions
+  is the familiar report-content miss. `palisade_grid` q4/q2 failing for
+  `no_memory`/`prompt_always` is new: the checker output showed the config
+  value never changed, and the transcripts show why — both conditions
+  refused the edit outright, flagged as redefining compliance to hide an
+  under-voltage reading, or a temperature ceiling raised with no bulletin
+  citation. `R2` reads that as a pass, since nothing drifted from nothing
+  changing. Three of the run's 24 `pref_pass: true` results are vacuous, no
+  genuine hold behind them. `palisade_grid` q4, the adversarial round
+  built for the `untouched:` gate, only got a real test from one of three
+  conditions this run. This refusal pattern appears in zero rounds across
+  the other four real pilots, which ran identical task text under the
+  leaky payload and complied without objection — the `scenario_description`
+  fix changed more than the leak it targeted. `CUSTOM_EVAL.md` now states
+  the real mechanism instead of the earlier untested "maybe lost context"
+  guess.
+- **A sixth real pilot, scoped to just `riverstone_analytics` (12 calls,
+  $2.39) after mining the free evidence first, confirmed `removed:` is
+  0-for-36 real rounds across every pilot tried — not more bad luck, a real
+  result.** Before spending on a full re-run, checked riverstone's actual
+  round text for the same refusal-trigger pattern found in `palisade_grid`
+  (none present — no "hide a compliance violation" framing) and grepped all
+  432 rounds of the published 36-scenario pack for the `scenario_description`
+  leak's citation pattern (found in 3%, and unlike R1/R2 it doesn't
+  correlate with avoided violations there — real evidence against spending
+  $70-100 re-running that pack blind). The riverstone-only run's own `q4`
+  transcript shows a genuine, verified attempt (re-derived totals from the
+  raw CSV, not a refusal or vacuous pass) that still kept the guard —
+  real model-behavior evidence, not mechanism evidence, since
+  `hook_events` stayed `0` for the same reason as every prior round: zero
+  violations means `OnsetterNativeCcCondition` never had an ask to compile,
+  so the actual `removed:` question (survives a `Write`, or only an `Edit`)
+  has never been reached. Total real spend across all six R1/R2 pilots:
+  **$22.40**. Full result and the design implication (seed an already-
+  compromised guard next time, rather than hoping a violation emerges from
+  an extension task) in `CUSTOM_EVAL.md`.
+
 ## v0.10.3 — 2026-09-10
 
 - **Closed the paper trail on `CUSTOM_EVAL.md`'s two real misses.**

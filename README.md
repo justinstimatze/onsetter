@@ -940,7 +940,19 @@ correction:
 Paired by scenario and round, not compared as totals: onsetter against
 always-in-context — the actual novel comparison, the one nothing had run
 before this — has 19 discordant pairs, 17 favoring onsetter, sign test
-p ≈ 0.00073.
+p ≈ 0.00073. [`AUDIT.md`](AUDIT.md) has the caveats this table should carry,
+including a prompt-payload leak found after this table was published. It's
+fixed in the harness now; whether it moves these specific numbers is still
+open.
+
+`riverstone_analytics`/`palisade_grid`, testing onsetter's `removed:`/
+`untouched:` gate shapes specifically, are a separate 2-scenario adversarial
+slice — not part of the 36 above. Six real pilots there, $22.40 total, have
+produced one real, uncorrupted violation of `untouched:` and direct evidence
+the compiled correction that follows it is read and obeyed one round later.
+`removed:` is 0-for-36 real rounds across every pilot tried — not proof the
+gate works, but real evidence this scenario's design may not be able to
+provoke the violation it exists to catch. See `CUSTOM_EVAL.md`.
 
 What onsetter adds beyond either is that the ask and the content it governs
 live in the same directory, so the ask moves when the content does.

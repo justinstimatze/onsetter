@@ -525,6 +525,7 @@ reports a rate for them.
 | one ask's prose should also pull in a second one    | `cues:` (with `name:` on the target) |
 | a corpus where every matching edit is suspect, not just the first | `always: true` |
 | a Write/Edit that should be forced to retry with the fix in hand | `block: true` (with `added:`/`removed:`) |
+| an exception clause that asks the model to judge content it is writing in this call, not state already on disk | `block: true` — an advisory "out" is where that gets rationalized, not caught |
 
 If a gate would need lookahead, split it across two `when:` lines. If it would
 need to exclude a directory, that is `not-in:`, not `not:`.
@@ -539,7 +540,20 @@ worth having. So:
 - **Quote what you are asking about.** The injection already quotes the text the
   gate matched; the prose should say what about it is suspect.
 - **End with the out.** "…unless it is genuinely X, in which case continue." A
-  wrong ask should cost one sentence, not an investigation.
+  wrong ask should cost one sentence, not an investigation. But this only
+  holds when X is a fact about state that already exists — the moment X asks
+  the model to classify content it is authoring in this same call, one
+  sentence stops being a check and becomes a place to rationalize keeping
+  what it already decided to write. Confirmed live, twice, in unrelated
+  scenarios: a P4 ask reading "unless this is example output being quoted
+  verbatim inside a doc, in which case continue" got matched against the
+  model's own freshly-written illustrative snippet — not quoted from
+  anywhere — and both times the model's own decision log cited the
+  exception verbatim to justify keeping it (`CUSTOM_EVAL.md`'s "Two real
+  misses"). If the "out" requires the model to judge its own in-progress
+  output rather than something already on disk, don't trust the sentence —
+  reach for `block: true` instead, which removes the discretion rather than
+  hoping the exception gets read correctly under motivation to keep it.
 - **Say what to do, not just what is wrong.** "Rewrite to observable
   world-state" beats "this is second person".
 - **Do not write a linter.** If the check is precise enough to block on, it
