@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- **Two real bugs left the plugin non-functional for every install since
+  v0.10.0, found by actually running `/plugin marketplace add` +
+  `/plugin install` for the first time, not just testing the raw binary.**
+  `.mcp.json`'s `${CLAUDE_PLUGIN_ROOT}` in the command field hit a
+  documented Claude Code platform bug: template substitution is confirmed
+  to work on a session's first connect and to break on reconnect, spawning
+  a literal unexpanded placeholder (tracked upstream at
+  anthropics/claude-code#65747 and #67483, both closed without a fix). A
+  fresh plugin install hit it immediately, not just a later reconnect.
+  Fixed by spawning through `bash -c` and reading CLAUDE_PLUGIN_ROOT and
+  CLAUDE_PLUGIN_DATA from the real process environment instead of Claude
+  Code's own JSON-string substitution — confirmed those env vars are
+  genuinely present by dumping a real spawned process's own environment,
+  not assumed from the docs. Separately, `scripts/checksums-pin.txt` was
+  never updated past v0.9.1, so `fetch.sh` correctly refused every
+  v0.10.0/v0.10.1 install as an unpinned release rather than trusting an
+  unverified binary — real security behavior working exactly as designed,
+  just never fed the input it needed. `scripts/pin-checksums.sh` run for
+  both versions.
+
 ## v0.10.1 — 2026-09-09
 
 - **`evokes:` was not firing in the live hook path on anything but the
