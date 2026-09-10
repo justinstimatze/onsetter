@@ -39,14 +39,23 @@ const DefaultModel = "nomic-embed-text"
 const cacheModelTag = DefaultModel + "+prefixed-v1"
 
 // DefaultBudget is the per-edit ceiling for the one live embed call a hook
-// invocation makes. This is a placeholder, not a calibrated number: a warm
-// local call measured at ~30ms against nomic-embed-text on the machine this
-// shipped from, and lexicon's own hot-path call (a looser UserPromptSubmit
-// cadence, not a blocking PreToolUse one) defaults to 6s. 200ms leaves
-// headroom over the measured case without saying anything confident about a
-// colder model, a slower machine, or a longer edit — that needs the same
-// replay-before-wiring measurement every ask header already gets.
-const DefaultBudget = 200 * time.Millisecond
+// invocation makes. 200ms was a placeholder, calibrated against a ~30ms
+// warm call on one quiet machine, and does not hold under real host
+// contention. Two real measurements: a quiet, single-tenant CPU-only host
+// held warm calls at 80-90ms and a forced-cold call at 0.35s; a
+// contended host (a dozen processes competing for a fixed memory budget)
+// pushed warm calls to 120-700ms and a forced-cold call to 10.3s. 1500ms
+// clears the contended host's warm-case max with real margin and the
+// quiet host's numbers by 5-15x, while staying far short of either
+// host's cold-start cost — a cold model still degrades to "does not
+// fire" exactly as designed, the same case nomic-embed-text's own
+// ~5-minute Ollama keep-alive already makes real for anyone editing in
+// bursts. Still not a number with a `replay`-style corpus behind it —
+// two machines, two load conditions — and the tradeoff is real: a
+// worst-case warm miss now costs up to 1.5s of real edit latency instead
+// of capping at 200ms, the price of the feature actually firing rather
+// than almost never doing so.
+const DefaultBudget = 1500 * time.Millisecond
 
 // DefaultThreshold is the cosine-similarity cutoff a score must clear to
 // count as evoked. Measured, not borrowed — lexicon's own POS/NEG overlap

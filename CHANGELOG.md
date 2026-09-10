@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.10.1 — 2026-09-09
+
+- **`evokes:` was not firing in the live hook path on anything but the
+  fastest machines.** `internal/embed.DefaultBudget` (200ms) was an
+  unvalidated placeholder. Measured for real: a warm embed call on a
+  loaded local host (a dozen concurrent Claude sessions competing for a
+  fixed memory budget) ranged 120-700ms, and a forced-cold call measured
+  10.3s — both far past 200ms, so the flagship semantic-match feature was
+  silently failing on every real call in testing, not a rare slow one. A
+  second measurement on a clean, single-tenant CPU-only host held warm
+  calls at 80-90ms and a forced-cold call at 0.35s, confirming the wide
+  range comes from host contention rather than anything `evokes:` itself
+  does. `DefaultBudget` is now 1500ms: clears the loaded host's warm-case
+  max with real margin and the clean host's numbers by 5-15x, while
+  staying far short of either host's cold-start cost — a cold model
+  still degrades to "does not fire" exactly as designed. Verified live:
+  10/10 hook calls against this repo's own `evokes:` ask fired correctly
+  after the fix, where every call failed before it.
+
 ## v0.10.0 — 2026-09-09
 
 - **Tightened every file and directory onsetter writes to owner-only,
