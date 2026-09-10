@@ -28,9 +28,9 @@ jobs:
         # Same gate `make check` runs locally (.golangci.yml at repo root) —
         # errcheck/ineffassign/unused aren't covered by vet or staticcheck
         # above, so CI was passing on things `make check` would have failed.
-        uses: golangci/golangci-lint-action@55c2c1448f86e01eaae002a5a3a9624417608d84 # v6
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: latest
+          version: v2.13.2
       - name: test
         # the hook tests build the binary and drive it over stdin, the way
         # Claude Code does; nothing here needs network or a real session
