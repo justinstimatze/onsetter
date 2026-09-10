@@ -69,9 +69,14 @@ delete the block.
 
 [The failure it answers](#the-failure-it-answers) ·
 [Install](#install) ·
+[Why a question and not a check](#why-a-question-and-not-a-check) ·
+[The kinds of ask this holds](#the-kinds-of-ask-this-holds) ·
 [Writing an ask](#writing-an-ask) ·
+[Recipes](#recipes) ·
+[Using `ask` as a library](#using-ask-as-a-library) ·
 [Commands](#commands) ·
 [Design](#design) ·
+[What it is bad at](#what-it-is-bad-at) ·
 [Where it sits](#where-it-sits) ·
 [Prior art](#prior-art)
 
@@ -505,8 +510,8 @@ than a path glob or a fuzzy phrase. A matched firing sets
 `permissionDecision: deny` with this ask's prose as the reason, so Claude
 Code blocks the write and the model retries with the fix already in view —
 in the same turn, not the next one. A firing reached through `cues:` never
-denies, even on a `block: true` target: a cued hit never checks its own
-gate, so it never has anything concrete to point at either.
+denies, even on a `block: true` target — a cued hit doesn't check its own
+gate, so there's nothing concrete for it to point at either.
 
 A gate has two independent ways to be dark: a broken pattern that never
 matches, or a glob narrower than the corpus it's meant to cover. `replay`'s
@@ -527,12 +532,13 @@ Track this in a ticket instead of a bare TODO comment.
 `lint` builds the same on-disk synthetic edit `list` and `replay` already
 construct from each fixture's own content, and asserts `Match` agrees with
 what the header claims — every `fires-on:` file must fire, every
-`silent-on:` file must not. A mismatch is a lint failure naming the exact
-fixture, not a rate to eyeball. Repeat either header for more than one
+`silent-on:` file must not. Where `replay` only gives a rate to eyeball, a
+mismatch here is a lint failure naming the exact fixture. Repeat either header
+for more than one
 fixture; both resolve against the ask's own directory, the same as `in:`.
 `removed:` has no fixture-testable form — a single file's content has no
 diff to remove a line from, so an ask carrying `removed:` is skipped by
-this check with a note, not a false pass or fail.
+this check with a note explaining why, rather than scored a pass or fail.
 
 Most blocks are one header and a paragraph. An ask in `corpus/CLAUDE.md` with
 no `in:` governs everything under `corpus/`, which is the scope its author can
@@ -765,8 +771,13 @@ noise. It quotes nothing, so it fires once per session across every file it
 governs, then stays quiet. A block with a content gate is an inspection —
 *is this narrator overreach* is a different question about `you nod` in one
 file than the same three words in another — and it fires on every
-occurrence, forever, marked `(asked 2× already this session)` once it's
-recurred. An occurrence is the quote together with the edit around it: two
+occurrence, forever, marked once it's recurred:
+
+```
+▸ CLAUDE.md:197 · matched ".NewFlag = " (asked 2× already this session)
+```
+
+An occurrence is the quote together with the edit around it: two
 edits sharing a short match are two different questions, and a
 byte-identical repeat of the same edit is still the same occurrence, still
 worth a fresh count.
@@ -921,23 +932,12 @@ live in the same directory, so the ask moves when the content does.
 
 ---
 
-Somebody was editing a different file, some months later.
-
-"Hallo," said a note. "This file already has a mutex."
-
-"It doesn't."
-
-"It did in March."
-
-There was a pause of the sort you get when both parties are right about
-different years.
-
-"Where do you live?"
-
-"`internal/store/CLAUDE.md`, line 41," said the note, which is written at the bottom
-of everything it says, for exactly this.
-
-And that was the end of that.
+Say a `CLAUDE.md` ask in `internal/store/` said this file already had a
+mutex — true when it was written. Five months later an edit adds a second
+locking scheme, and the ask still fires: it was written to catch exactly
+this, and wrong or not, it names its own address in the same breath,
+`internal/store/CLAUDE.md:41`. Retiring it means deleting four lines, in
+the same session as the edit that proved it stale.
 
 ## License
 

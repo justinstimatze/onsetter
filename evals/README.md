@@ -14,10 +14,10 @@ eval is currently in early access`. There is also no public docs page for
 this feature yet (checked code.claude.com's docs index directly — no
 dedicated page for the eval harness, grader types, or case file format).
 
-So the file format below is not fetched from a live doc and not confirmed
-against a real scaffold — it's the most complete schema available, sourced
-from Claude Code's own early-access internal reference material, which is a
-recalled specification, not a primary source. Every case here parses as
+The file format below comes from Claude Code's own early-access internal
+reference material — a recalled specification, unconfirmed against a live
+doc or a real scaffold. It's still the most complete schema available. Every
+case here parses as
 plausible `prompt.md` + `graders/*.md` + `case.yaml` content under that
 schema. Whether it's exactly right won't be known until `claude plugin eval`
 runs for real. **The first thing to do once access opens is run this suite,
@@ -54,7 +54,7 @@ Named risks, most likely to bite first:
 
 The fixture `CLAUDE.md` embedded in every case's `scaffold_script`, and the
 exact injected text each grader matches against, were checked directly
-against onsetter's own CLI — not assumed:
+against onsetter's own CLI:
 
 - `onsetter lint` parses the fixture clean (3 asks, 1 file, no errors).
 - `onsetter hook`, fed the real nested Claude Code PreToolUse payload shape
@@ -118,6 +118,6 @@ it if no `.git` exists — onsetter's discovery walk needs a boundary.
 claude plugin eval --ablation with-without .
 ```
 
-from the plugin root. Read the delta per case, not just pass/fail — the
-whole point of `--ablation` here is proving the *plugin* causes the
-behavior, not just that the behavior happens to occur.
+from the plugin root. Read the delta per case — `--ablation` isolates
+whether the *plugin* is what causes the behavior, separate from the
+behavior simply occurring on its own.

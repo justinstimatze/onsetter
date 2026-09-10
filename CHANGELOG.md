@@ -1,6 +1,48 @@
 # Changelog
 
-## Unreleased
+## v0.10.0 — 2026-09-09
+
+- **Tightened every file and directory onsetter writes to owner-only,
+  self-healing on the next write rather than only at creation.**
+  `os.MkdirAll`/`os.WriteFile` only apply their mode bit when they create a
+  path; `gosec` found 12 production call sites writing group/world-readable
+  state under `~/.cache/onsetter` and `~/.claude/skills`, and the naive fix
+  — just tightening the literal — would have silently done nothing for
+  every install that already ran once, this machine included:
+  `~/.cache/onsetter/{asks,sessions}` and
+  `~/.cache/onsetter/{asks.json,embeddings.json}` were still sitting at
+  `0755`/`0644` when checked. New `internal/secfile` package narrows a
+  path's mode toward the target by intersecting bits rather than
+  overwriting them, proven by a regression test that a deliberately
+  restricted directory never gets widened back. `gosec` is now part of the
+  lint gate (`G304`/`G703` excluded as low-value for this tool's own trust
+  boundary, two `G115` hits on `unix.Flock` silenced with scoped `//nolint`
+  comments rather than a blanket exclude), every GitHub Action in
+  `ci.yml`/`release.yml` is pinned to a commit SHA instead of a moving tag,
+  and `ci.yml`'s Go version now tracks `go.mod` instead of `stable`.
+
+- **README's opening example swapped for a real ask from a different,
+  private project, not onsetter's own — plus a full pass for public
+  readability.** The prior example (reachability from `onsetter hook`'s own
+  entrypoint) was a solved static-analysis problem, undercutting the
+  argument it was meant to demonstrate; the replacement is a `when:`-gated
+  dead-state-write check whose resolution genuinely isn't mechanizable — the
+  read side is a string-keyed template lookup rather than a Go call site,
+  invisible to anything a compiler can trace — and its injected-context
+  block is captured from a
+  real `onsetter hook` run, not hand-written. A cold read surfaced three
+  more gaps, all fixed: the table of contents was missing 5 of 13 real
+  sections, including the one the opening paragraph explicitly links to;
+  the repeat marker (`asked 2× already this session`) was described in
+  prose but never shown as real captured output; and the closing vignette
+  still used the personified-note narrative device the rest of the rewrite
+  had deliberately dropped. Also swept every touched `.md` file through
+  `cope-gate` and fixed ten real instances of the not-A-but-B flip
+  construction, leaving the deliberate parallel structures (SECURITY.md's
+  "What it reads"/"writes"/"sends"/"emits") and one verbatim third-party
+  quote untouched. States plainly that onsetter is Linux/macOS only and
+  that `evokes:` is the one feature needing anything beyond onsetter
+  itself.
 
 - **Authored a real `claude plugin eval` suite under `evals/` — five cases
   exercising onsetter's own mechanism through Claude Code's actual plugin
@@ -74,9 +116,10 @@
   has already committed to the tool call's exact arguments by the time the
   hook runs.** Scoped to `added:`/`removed:` on purpose and enforced at
   parse time — `block: true` with no `added:`/`removed:` on the same block
-  is now a parse error, not a silently-inert header — because those are the
-  two gates that hand back the edit's own literal text rather than a path
-  glob or a fuzzy phrase, so a denial always points at something concrete.
+  now fails to parse, where it used to sit there silently inert — because
+  those are the two gates that hand back the edit's own literal text rather
+  than a path glob or a fuzzy phrase, so a denial always points at something
+  concrete.
   A matched, uncued firing sets `hookSpecificOutput.permissionDecision:
   "deny"` with the ask's prose as `permissionDecisionReason`;
   `additionalContext` still carries every matched ask's prose in the same
@@ -105,8 +148,8 @@
   hand-built 5-positive/5-negative corpora, rewording the `evokes:` phrase
   each time per `calib`'s own stated remedy for an overlap. All three
   overlapped at the 0.48 default — no threshold separated every example in
-  any of the three runs — and each failure was diagnosable, not random: the
-  first phrase asked for a citation-*presence* distinction (closer to a
+  any of the three runs — and each failure had a specific, diagnosable
+  cause: the first phrase asked for a citation-*presence* distinction (closer to a
   `when:`-shaped lexical feature than a topic), the second asked for a
   citation-*source-identity* distinction (which entity is being cited,
   world-knowledge no local embedding model encodes), and the third — a
@@ -118,11 +161,11 @@
   markdown), even when it separates broad topics fine — the false-fire rate
   at threshold 0.48 was 5/5 negatives in two of the three runs. Shipped the
   third phrasing anyway: onsetter's own stated design ("Why a question and
-  not a check") is explicit that a wrong `evokes:` firing costs one sentence,
-  not a broken build, so an imperfectly-calibrated reminder is inside the
-  tolerance the whole project is built around, not a reason to withhold it —
-  but the real numbers are recorded here rather than a first-draft threshold
-  quietly standing in for evidence that was never actually gathered.
+  not a check") treats a wrong `evokes:` firing as costing one sentence
+  rather than breaking a build, so an imperfectly-calibrated reminder sits
+  inside the tolerance the whole project is built around — and the real
+  numbers are recorded here rather than a first-draft threshold quietly
+  standing in for evidence that was never actually gathered.
   `IDEAS.md`'s "evokes:/warm/calib subsystem is onsetter's weakest,
   least-calibrated part" entry is retired: it asked for exactly this
   investigation pass, and this is what it found.
