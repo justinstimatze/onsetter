@@ -92,12 +92,13 @@
   not just cited — which is why that case's prompt appends a bare sentence
   to an existing file rather than writing a fresh one.
 
-- **New `fires-on:`/`silent-on:` headers, germline's own feature request,
-  traced to the root cause their `CHANGELOG.md` names directly: "A gate has
-  two independent ways to be dark. Fixing one leaves the measurement looking
-  identical."** `onsetter replay`'s rate reads the same — low, or zero —
-  whether a corpus is genuinely clean or a gate is dead: germline hit this
-  twice in one day, once from a broken anchoring regex (`when: ^TODO`
+- **New `fires-on:`/`silent-on:` headers, a downstream project's own
+  feature request, traced to the root cause their own changelog names
+  directly: "A gate has two independent ways to be dark. Fixing one leaves
+  the measurement looking identical."** `onsetter replay`'s rate reads the
+  same — low, or zero — whether a corpus is genuinely clean or a gate is
+  dead: that project hit this twice in one day, once from a broken
+  anchoring regex (`when: ^TODO`
   anchors to the start of the whole file without `(?m)`, never a line three
   deep) and once from a glob narrower than the corpus it meant to cover.
   Both headers point at a real file whose current content is a known
