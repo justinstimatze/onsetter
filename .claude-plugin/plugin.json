@@ -1,6 +1,6 @@
 {
   "name": "onsetter",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "Injects a note from your CLAUDE.md at the Write, Edit, or Bash call it's actually about — not once at the top of the session and never again. Gated on path and content, and it says so when it repeats.",
   "author": {
     "name": "Justin Stimatze",

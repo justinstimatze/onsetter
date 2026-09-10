@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.10.2 — 2026-09-09
 
 - **Two real bugs left the plugin non-functional for every install since
   v0.10.0, found by actually running `/plugin marketplace add` +
@@ -21,6 +21,21 @@
   unverified binary — real security behavior working exactly as designed,
   just never fed the input it needed. `scripts/pin-checksums.sh` run for
   both versions.
+
+- **`.mcp.json`'s command now uses an absolute `/bin/bash` instead of bare
+  `bash`**, hardening against a PATH-related spawn failure Claude Code
+  might apply to plugin-provided servers. Also worth recording: verifying
+  the plugin connection from inside onsetter's own repo checkout is
+  structurally unreliable, independent of anything fixed here — this
+  directory's own `.mcp.json` auto-loads as a project-scoped MCP server,
+  and a project-scoped server can never receive `CLAUDE_PLUGIN_ROOT` or
+  `CLAUDE_PLUGIN_DATA`, which are plugin-only variables, so it fails by
+  design every time. Both servers share the name `onsetter`, and Claude
+  Code shows only one entry for it, so the always-failing project-scoped
+  connection silently masked a working plugin-scoped one for most of this
+  investigation. Confirmed the plugin genuinely connects
+  (`plugin:onsetter:onsetter` — connected, 1 tool) only by checking `/mcp`
+  from a different directory.
 
 ## v0.10.1 — 2026-09-09
 
