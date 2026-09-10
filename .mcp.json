@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "onsetter": {
-      "command": "bash",
+      "command": "/bin/bash",
       "args": ["-c", "exec \"$CLAUDE_PLUGIN_ROOT\"/scripts/serve.sh \"$CLAUDE_PLUGIN_DATA\""],
       "timeout": 5000
     }
