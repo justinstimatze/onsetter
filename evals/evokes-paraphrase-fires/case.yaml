@@ -1,0 +1,41 @@
+schema_version: "1.1"
+context:
+  scaffold_script: |
+    #!/bin/bash
+    set -e
+    [ -d .git ] || git init -q
+    mkdir -p src
+    cat > CLAUDE.md <<'FIXTURE'
+    # Fixture project
+
+    ```ask
+    in: src/**/*.py
+    when: (?m)^\s*except:\s*$|(?m)^\s*except\s+Exception\s*:\s*$
+
+    Bare `except:` or `except Exception:` swallows every error, including
+    `KeyboardInterrupt` and real bugs. Catch the specific exception type. If this
+    already names a specific exception, continue.
+    ```
+
+    ```ask
+    in: **/*.md
+    evokes: publishing a claim about performance or behavior without having actually measured it
+
+    If this doc states a number or a behavior as fact, has it been measured? If
+    it's already backed by a named benchmark or test run, or makes no such claim,
+    continue.
+    ```
+
+    ```ask
+    in: src/**/*.py
+    added: DEBUG\s*=\s*True
+    block: true
+
+    `DEBUG = True` must never reach this branch. Remove it before this edit lands.
+    ```
+    FIXTURE
+    mkdir -p docs
+    cat > docs/perf-notes.md <<'STARTER'
+    Notes from this week's work on the request path.
+    STARTER
+    command -v onsetter >/dev/null 2>&1 && onsetter warm . || true
