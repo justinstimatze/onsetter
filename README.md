@@ -1,67 +1,65 @@
 # onsetter
 
-Somebody was editing `hook.go`.
+onsetter is a `PreToolUse` hook for Claude Code. Before a `Write` or `Edit`
+lands, it reads every `CLAUDE.md` above the file being touched, matches its
+`ask` blocks against the path and the incoming text, and prepends whatever
+matches into the model's own context, in the same turn, before the call
+resolves. The model reads it and answers it itself — right there, inline,
+with no round trip and nothing external holding a verdict it doesn't have
+the context to make. Not a hook that blocks after the fact, not a linter
+running a fixed rule from outside — see
+[Why a question and not a check](#why-a-question-and-not-a-check) for the
+asymmetry that makes this work.
 
-It was a Tuesday, and the file was the one every `Write` and `Edit` in a
-session runs through, and they had been at it an hour or so and were getting
-on rather well.
-
-Then they wrote a `panic()`, two calls downstream of a JSON field the caller
-always sets. Always.
-
-"Hallo," said a note. "Is this path reachable from the hook?"
-
-"It can't be. The caller always sets that field."
-
-"Always is a word about a caller you don't control," said the note. "If it's
-wrong once, what happens here?"
-
-So the somebody looked, which is more than most people do on a Tuesday. The
-field came off disk, not off a struct literal, and nothing upstream of this
-line had ever checked it was there.
-
-"It's just for local testing," they said, hopefully.
-
-It was not just for local testing.
-
----
-
-The note is real. It lives in `CLAUDE.md`, seventeen lines into this
-repository's own ordinary markdown file, and it has been sitting there since
-the redesign that made a matched ask fire on every occurrence instead of once:
+Here's a real one, running against a different project's `CLAUDE.md` — an
+interactive-fiction engine, not onsetter's own:
 
 ````markdown
 ```ask
-in: cmd/**/*.go
-not-in: **/main.go
+in: internal/{state,engine,turning,gossip,attention,worldstate,*pars*}*/*.go
 not-in: **/*_test.go
-when: os\.Exit\(|log\.Fatal|panic\(
+when: (\.[A-Z][A-Za-z0-9]*\s*=[^=]|\[[^]]+\]\s*=[^=]|\bappend\(|\bPending[A-Z]|\bRecord[A-Z]|\bStore[A-Z])
 
-Everything reachable from `onsetter hook` stands in front of every Write and
-Edit in a session, and the only acceptable failure there is exit 0 with no
-output — bad JSON, a missing path, an unparseable block, a panic. Is this path
-reachable from the hook, and if it is, does something above it recover and exit
-0? If this is a subcommand that only ever runs from a terminal, continue.
+This adds or records state. Trace the read side now: does the field have a
+reader that reaches the player — prose, NPC dialogue, the notebook, the debug
+HUD? A recorded-but-never-rendered field is dead content.
+
+Grep for the consumer. If none exists, author the read side this session. If it
+is internal substrate feeding another writer, confirm that consumer exists and
+continue.
 ```
 ````
 
-onsetter is the part that carried it to the edit. It is one `PreToolUse` hook.
-It reads every `CLAUDE.md` above the file being written, matches the blocks
-against the path and the incoming text, and prepends the ones that hit. Before
-the write lands, Claude receives this:
+The trigger is a regex on the write — cheap, ordinary, the kind any linter
+already runs. The answer is the hard part: whether some consumer, anywhere
+in a prose template or a dialogue table keyed by string name, actually reads
+this field back. That's not a graph a compiler can walk — the read side was
+never a Go call site to begin with. You could build a data-flow tracer that
+follows a value through that indirection and reports dead writes — a real
+tool to build and keep current. A paragraph in a file already open costs one
+sentence.
+
+If Claude adds a field write here with nothing downstream that reads it,
+this fires. Before the write lands, Claude receives:
 
 ```
 onsetter — 1 ask for this edit. A repeat is marked, not hidden.
 
-▸ CLAUDE.md:17 · matched "panic("
-Everything reachable from `onsetter hook` stands in front of every Write and
-Edit in a session, and the only acceptable failure there is exit 0 with no
-output — bad JSON, a missing path, an unparseable block, a panic. Is this path
-reachable from the hook, and if it is, does something above it recover and exit
-0? If this is a subcommand that only ever runs from a terminal, continue.
+▸ CLAUDE.md:197 · matched ".NewFlag = "
+This adds or records state. Trace the read side now: does the field have a
+reader that reaches the player — prose, NPC dialogue, the notebook, the debug
+HUD? A recorded-but-never-rendered field is dead content.
+
+Grep for the consumer. If none exists, author the read side this session. If it
+is internal substrate feeding another writer, confirm that consumer exists and
+continue.
 
 To retire one, delete its block from the file named above.
 ```
+
+Claude answers it in the same breath it was about to write the file: trace
+the consumer, write the missing read path, or continue if the field already
+feeds one — no second call, nothing waiting on an external verdict.
 
 That is the whole product. Adding an ask is writing a paragraph in a file you
 already have. There is nothing to install per ask and no second source of
@@ -87,6 +85,14 @@ across six models, when the rules are sitting right there in the context window
 never happens, because nothing makes it happen at the moment it applies.
 
 ## Install
+
+Linux and macOS only — `internal/session`'s file locking calls into
+`golang.org/x/sys/unix` directly, so the build itself fails on Windows.
+
+Everything here works with nothing beyond onsetter itself, except one ask
+type: `evokes:` calls a local [Ollama](https://ollama.com) instance for
+embeddings — see [Writing an ask](#writing-an-ask) for the setup. Skip it
+entirely and every other header still works.
 
 There are two independent install paths — pick one, since running both wires
 the hook twice, and `onsetter status` will tell you if that's happened.

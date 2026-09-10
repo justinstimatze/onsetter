@@ -80,15 +80,17 @@ func Asks(path string) ([]*ask.Ask, []error) {
 // caller goes through here, so the `.claude/` exception is known in one place
 // rather than remembered in three.
 //
-// Every hook invocation is a fresh process, so an in-memory memoization
-// buys nothing across calls — what matters is the on-disk cache in
-// cache.go, checked here by path+mtime+size before ever reading src's
-// content. A file whose fingerprint doesn't match (or was never cached) is
-// parsed for real, then written back so the next call — the next Write,
-// Edit, Bash, or Read in this repo, from this session or the next one —
-// gets the fast path. If src can't even be stat'd, there is no fingerprint
-// to check; ParseFileScoped runs directly and surfaces whatever error
-// os.Open hits, same as the cache had never existed.
+// The bare `onsetter hook` CLI is a fresh process per call, so nothing here
+// persists between them — the on-disk cache in cache.go, checked by
+// path+mtime+size before ever reading src's content, is what carries state
+// across those calls. `onsetter serve`'s long-lived process memoizes in
+// memory too (see Warm), but still lands here on its own first load or on
+// invalidation, so the fingerprint check below is the one path that matters
+// either way. A file whose fingerprint doesn't match (or was never cached)
+// is parsed for real, then written back so the next call gets the fast
+// path. If src can't even be stat'd, there is no fingerprint to check;
+// ParseFileScoped runs directly and surfaces whatever error os.Open hits,
+// same as the cache had never existed.
 func ParseSource(src string) ([]*ask.Ask, error) {
 	info, statErr := os.Stat(src)
 	if statErr != nil {

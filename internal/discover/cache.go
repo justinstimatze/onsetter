@@ -9,6 +9,7 @@ import (
 	"regexp"
 
 	"github.com/justinstimatze/onsetter/ask"
+	"github.com/justinstimatze/onsetter/internal/secfile"
 )
 
 // askSnapshot is a JSON-safe copy of a *ask.Ask: every []*regexp.Regexp field
@@ -225,8 +226,8 @@ func setAt(p string, mtime, size int64, asks []*ask.Ask) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+	if err := secfile.EnsureDir(filepath.Dir(p), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(p, b, 0o644)
+	return secfile.WriteFile(p, b, 0o600)
 }

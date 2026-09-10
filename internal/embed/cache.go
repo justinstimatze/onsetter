@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/justinstimatze/onsetter/internal/secfile"
 )
 
 // cacheEntry pairs a vector with the model that produced it. Without the
@@ -92,14 +94,14 @@ func (c *Cache) Save() error {
 	if c.path == "" {
 		return fmt.Errorf("no cache path available (os.UserCacheDir() failed)")
 	}
-	if err := os.MkdirAll(filepath.Dir(c.path), 0o755); err != nil {
+	if err := secfile.EnsureDir(filepath.Dir(c.path), 0o700); err != nil {
 		return err
 	}
 	b, err := json.Marshal(c.entries)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(c.path, b, 0o644)
+	return secfile.WriteFile(c.path, b, 0o600)
 }
 
 // Warm reports whether phrase already has a usable cached vector — the exact

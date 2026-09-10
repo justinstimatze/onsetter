@@ -14,10 +14,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: stable
+          go-version-file: go.mod
       - name: gofmt
         run: test -z "$(gofmt -l .)"
       - name: vet
@@ -28,7 +28,7 @@ jobs:
         # Same gate `make check` runs locally (.golangci.yml at repo root) —
         # errcheck/ineffassign/unused aren't covered by vet or staticcheck
         # above, so CI was passing on things `make check` would have failed.
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@55c2c1448f86e01eaae002a5a3a9624417608d84 # v6
         with:
           version: latest
       - name: test

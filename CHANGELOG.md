@@ -5,7 +5,7 @@
 - **Authored a real `claude plugin eval` suite under `evals/` — five cases
   exercising onsetter's own mechanism through Claude Code's actual plugin
   wiring, not the Go binary in isolation — but it has not run.** `claude
-  plugin eval` is early access on this machine (Claude Code 2.1.267),
+  plugin eval` is early access as of Claude Code 2.1 (September 2026),
   confirmed directly: `--help` works and shows a real CLI, but even `claude
   plugin eval init --bare <name>` — the scaffold command that would have
   produced a confirmed-correct template — exits 1 with "plugin eval is
@@ -18,11 +18,11 @@
   among them) so whoever runs this first knows exactly what to check if a
   case's shape is wrong.
 
-  What *is* verified, for real, against onsetter's own CLI on this machine,
-  not assumed: every grader's regex matches onsetter's own literal injected
-  text, captured from a real `onsetter hook` call fed the actual nested
-  Claude Code payload shape (`tool_input.file_path`/`content`, not a flat
-  one — an assumption that failed silently, empty stdout, until traced to
+  What *is* verified, for real, against onsetter's own CLI, not assumed:
+  every grader's regex matches onsetter's own literal injected text,
+  captured from a real `onsetter hook` call fed the actual nested Claude
+  Code payload shape (`tool_input.file_path`/`content`, not a flat one — an
+  assumption that failed silently, empty stdout, until traced to
   `cmd/onsetter/hook.go`'s `payload` struct). The `evokes:` case's fixture
   sentence was calibrated with `onsetter calib` against a real 5-positive/
   3-negative corpus (scores 0.498–0.586 against the 0.48 default threshold)
@@ -242,8 +242,8 @@ self-installable, plus a real leak already live on this public repo.
   naming what that caller is.
 - **`.gitignore` now excludes the three session-handoff notes** another
   Claude Code session had dropped at the repo root, un-ignored, one
-  `git add -A` from landing in a commit: conversation-trace prose
-  ("written by a session, at Justin's request"), a competitor's star
+  `git add -A` from landing in a commit: conversation-trace prose (a
+  first-person aside naming who it was written for), a competitor's star
   count, cross-project detail. Named explicitly rather than by a glob, so
   a real future root-level doc isn't silently swallowed by the same
   pattern.

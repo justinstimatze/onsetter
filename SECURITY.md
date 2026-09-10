@@ -9,7 +9,10 @@ Please do not file public issues for suspected vulnerabilities.
 
 onsetter runs locally, with no configuration beyond the `CLAUDE.md` files
 already in your tree. It sends nothing to a network address beyond
-`localhost` — the one exception, `evokes:`, is covered below.
+`localhost` — the one exception, `evokes:`, is covered below. Linux and
+macOS only — the build itself fails on Windows (`internal/session`'s file
+locking calls into `golang.org/x/sys/unix` directly), so there's no
+Windows-specific surface to reason about here.
 
 The plugin install runs the hook as `onsetter serve`, a process Claude Code
 keeps alive for the whole session rather than spawning fresh per call — it

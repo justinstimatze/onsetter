@@ -25,6 +25,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/justinstimatze/onsetter/internal/secfile"
 )
 
 // Store is a per-session count of ask-occurrence keys, kept as one file of
@@ -68,7 +70,7 @@ func Open(id string) *Store {
 	if err != nil {
 		// First sighting of this session; a good moment to sweep old ones,
 		// since it happens once per session rather than once per edit.
-		_ = os.MkdirAll(dir, 0o755)
+		_ = secfile.EnsureDir(dir, 0o700)
 		prune(dir, 14*24*time.Hour)
 		return s
 	}
@@ -169,17 +171,18 @@ func (s *Store) Record(ids ...string) {
 		return
 	}
 
-	lock, err := os.OpenFile(s.path+".lock", os.O_CREATE|os.O_RDWR, 0o644)
+	lock, err := os.OpenFile(s.path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		s.recordUnlocked(ids)
 		return
 	}
+	_ = secfile.Narrow(s.path+".lock", 0o600) // O_CREATE only applies the mode on create; narrow an already-existing lock file too
 	defer lock.Close()
-	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX); err != nil {
+	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX); err != nil { //nolint:gosec // G115: fd never approaches uintptr's range; unix.Flock requires int
 		s.recordUnlocked(ids)
 		return
 	}
-	defer func() { _ = unix.Flock(int(lock.Fd()), unix.LOCK_UN) }()
+	defer func() { _ = unix.Flock(int(lock.Fd()), unix.LOCK_UN) }() //nolint:gosec // G115: fd never approaches uintptr's range; unix.Flock requires int
 
 	current, err := readSeen(s.path)
 	if err != nil {
@@ -199,7 +202,7 @@ func (s *Store) Record(ids ...string) {
 	for k, n := range current {
 		lines = append(lines, k+":"+strconv.Itoa(n))
 	}
-	_ = os.WriteFile(s.path, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
+	_ = secfile.WriteFile(s.path, []byte(strings.Join(lines, "\n")+"\n"), 0o600)
 }
 
 // recordUnlocked is the pre-lock fallback: best effort against a machine
@@ -212,7 +215,7 @@ func (s *Store) recordUnlocked(ids []string) {
 	for k, n := range s.seen {
 		lines = append(lines, k+":"+strconv.Itoa(n))
 	}
-	_ = os.WriteFile(s.path, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
+	_ = secfile.WriteFile(s.path, []byte(strings.Join(lines, "\n")+"\n"), 0o600)
 }
 
 // Touched returns every path written this session, in no particular order.
@@ -232,10 +235,11 @@ func (s *Store) Touch(path string) {
 		return
 	}
 	s.touched[path] = true
-	f, err := os.OpenFile(s.path+".paths", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(s.path+".paths", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return
 	}
+	_ = secfile.Narrow(s.path+".paths", 0o600) // O_CREATE only applies the mode on create; narrow an already-existing file too
 	defer f.Close()
 	_, _ = f.WriteString(path + "\n")
 }

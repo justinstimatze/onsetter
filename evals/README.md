@@ -6,7 +6,7 @@ not `cmd/onsetter`'s Go unit tests, which exercise the binary in isolation.
 
 ## Status: authored, not run-verified
 
-`claude plugin eval` is early access on this machine (Claude Code 2.1.267).
+`claude plugin eval` is early access as of Claude Code 2.1 (September 2026).
 Confirmed directly: `claude plugin eval --help` works and shows a real,
 current CLI; `claude plugin eval init --bare <name>`, the scaffold command
 that would have produced a confirmed-correct template, exits 1 with `plugin
@@ -16,12 +16,11 @@ dedicated page for the eval harness, grader types, or case file format).
 
 So the file format below is not fetched from a live doc and not confirmed
 against a real scaffold — it's the most complete schema available, sourced
-from Claude Code's own early-access internal reference material (via a
-`claude-code-guide` agent consult), which is a recalled specification, not
-a primary source I read myself. Every case here parses as plausible
-`prompt.md` + `graders/*.md` + `case.yaml` content under that schema.
-Whether it's exactly right won't be known until `claude plugin eval` runs
-for real. **The first thing to do once access opens is run this suite,
+from Claude Code's own early-access internal reference material, which is a
+recalled specification, not a primary source. Every case here parses as
+plausible `prompt.md` + `graders/*.md` + `case.yaml` content under that
+schema. Whether it's exactly right won't be known until `claude plugin eval`
+runs for real. **The first thing to do once access opens is run this suite,
 read the actual error if one file's shape is wrong, and fix that file** —
 not to re-derive the schema from scratch.
 
@@ -55,7 +54,7 @@ Named risks, most likely to bite first:
 
 The fixture `CLAUDE.md` embedded in every case's `scaffold_script`, and the
 exact injected text each grader matches against, were checked directly
-against onsetter's own CLI on this machine — not assumed:
+against onsetter's own CLI — not assumed:
 
 - `onsetter lint` parses the fixture clean (3 asks, 1 file, no errors).
 - `onsetter hook`, fed the real nested Claude Code PreToolUse payload shape
@@ -93,7 +92,7 @@ and, for a `block: true` match:
 
 ## Layout
 
-Five cases, one per behavior named in the roadmap's Phase 6:
+Five cases, each exercising one thing the plugin wiring is supposed to do:
 
 - `fires-on-matching-write/` — a `when:`-gated ask fires on the matching edit.
 - `silent-on-unrelated-write/` — the same ask stays dark on an unrelated one.
@@ -102,9 +101,10 @@ Five cases, one per behavior named in the roadmap's Phase 6:
 - `block-forces-retry/` — a `block: true` ask denies the first attempt and
   the model retries with a corrected edit.
 - `sustained-session-stays-fast/` — many sequential edits in one session all
-  land; the actual latency comparison against Phase 2's persistent-server
-  benchmark has to be read from the run's own `--json` output afterward, not
-  from a grader — no documented grader type asserts wall-clock.
+  land; the actual latency comparison against the persistent-server
+  benchmark in `CHANGELOG.md` has to be read from the run's own `--json`
+  output afterward, not from a grader — no documented grader type asserts
+  wall-clock.
 
 Every case's `scaffold_script` writes the same fixture `CLAUDE.md` (three
 asks: a `when:`-gated bare-except check, an `evokes:`-gated

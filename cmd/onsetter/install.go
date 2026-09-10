@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/justinstimatze/onsetter/ask"
+	"github.com/justinstimatze/onsetter/internal/secfile"
 )
 
 // cmdInstall writes the one settings entry onsetter will ever need.
@@ -52,7 +53,7 @@ func cmdInstall(args []string) error {
 	}
 	command := self + " hook"
 
-	if err := os.MkdirAll(filepath.Dir(settings), 0o755); err != nil {
+	if err := secfile.EnsureDir(filepath.Dir(settings), 0o700); err != nil {
 		return err
 	}
 	root := map[string]any{}
@@ -174,12 +175,12 @@ func isOnsetterHookCommand(cmd string) bool {
 // beside it defines.
 func writeSkill(claudeDir string) (string, error) {
 	dir := filepath.Join(claudeDir, "skills", "onsetter")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := secfile.EnsureDir(dir, 0o700); err != nil {
 		return "", err
 	}
 	path := filepath.Join(dir, "SKILL.md")
 	tmp := path + ".onsetter-tmp"
-	if err := os.WriteFile(tmp, []byte(ask.Skill()), 0o644); err != nil {
+	if err := secfile.WriteFile(tmp, []byte(ask.Skill()), 0o600); err != nil {
 		return "", err
 	}
 	if err := os.Rename(tmp, path); err != nil {
