@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.2
 	github.com/hexops/gotextdiff v1.0.3
-	github.com/mark3labs/mcp-go v1.0.0
+	github.com/mark3labs/mcp-go v1.1.0
 	golang.org/x/sys v0.47.0
 	mvdan.cc/sh/v3 v3.14.1
 )
